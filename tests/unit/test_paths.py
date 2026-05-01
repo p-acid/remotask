@@ -25,13 +25,24 @@ def test_cache_dir_respects_xdg_cache_home(monkeypatch: pytest.MonkeyPatch, tmp_
 def test_default_fallback_when_xdg_unset(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
-    cfg = paths.config_dir()
-    data = paths.data_dir()
-    assert cfg.is_relative_to(tmp_path)
-    assert data.is_relative_to(tmp_path)
-    assert cfg.name == "remote-task"
-    assert data.name == "remote-task"
+    assert paths.config_dir() == tmp_path / ".config" / "remote-task"
+    assert paths.data_dir() == tmp_path / ".local" / "share" / "remote-task"
+    assert paths.cache_dir() == tmp_path / ".cache" / "remote-task"
+
+
+def test_xdg_overrides_take_precedence_over_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """When both XDG_*_HOME and HOME are set, XDG_*_HOME wins."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-cfg"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg-data"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+    assert paths.config_dir() == tmp_path / "xdg-cfg" / "remote-task"
+    assert paths.data_dir() == tmp_path / "xdg-data" / "remote-task"
+    assert paths.cache_dir() == tmp_path / "xdg-cache" / "remote-task"
 
 
 def test_derived_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
