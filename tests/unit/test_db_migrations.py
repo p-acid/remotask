@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from remote_task.core import db
+from remotask.core import db
 
 
 def _all_tables(conn: sqlite3.Connection) -> set[str]:

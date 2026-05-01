@@ -6,10 +6,10 @@ from pathlib import Path
 
 import typer
 
-from remote_task.core import config as rt_config
-from remote_task.core import db as rt_db
-from remote_task.core import logging as rt_logging
-from remote_task.core import paths
+from remotask.core import config as rt_config
+from remotask.core import db as rt_db
+from remotask.core import logging as rt_logging
+from remotask.core import paths
 
 app = typer.Typer(
     name="init",
@@ -29,7 +29,7 @@ def init(
         False, "--force", help="Overwrite config (DB user data preserved)."
     ),
 ) -> None:
-    """Bootstrap the remote-task environment."""
+    """Bootstrap the remotask environment."""
     config_path = paths.config_path()
     db_path = paths.db_path()
     log_dir = paths.log_dir()
@@ -88,8 +88,8 @@ def init(
         typer.echo("✓ Generated daemon.auth_token (saved to config.toml)")
         typer.echo("")
         typer.echo("Next steps:")
-        typer.echo("  remote-task config set telegram.bot_token <YOUR_TOKEN>")
-        typer.echo("  remote-task install")
+        typer.echo("  remotask config set telegram.bot_token <YOUR_TOKEN>")
+        typer.echo("  remotask install")
     except Exception as exc:
         # Rollback only artifacts we created in this run.
         for p in reversed(created):

@@ -1,4 +1,4 @@
-"""remote-task CLI entry point."""
+"""remotask CLI entry point."""
 from __future__ import annotations
 
 import os
@@ -6,29 +6,29 @@ from pathlib import Path
 
 import typer
 
-from remote_task._version import __version__
-from remote_task.commands import (
+from remotask._version import __version__
+from remotask.commands import (
     config_cmd,
 )
-from remote_task.commands import (
+from remotask.commands import (
     daemon as daemon_cmd,
 )
-from remote_task.commands import (
+from remotask.commands import (
     init as init_cmd,
 )
-from remote_task.commands import (
+from remotask.commands import (
     install as install_cmd,
 )
-from remote_task.commands import (
+from remotask.commands import (
     login as login_cmd,
 )
-from remote_task.commands import (
+from remotask.commands import (
     projects as projects_cmd,
 )
-from remote_task.commands import (
+from remotask.commands import (
     sessions as sessions_cmd,
 )
-from remote_task.commands import (
+from remotask.commands import (
     uninstall as uninstall_cmd,
 )
 
@@ -40,7 +40,7 @@ def _version_callback(value: bool) -> None:
 
 
 app = typer.Typer(
-    name="remote-task",
+    name="remotask",
     help="Remote agent trigger for Claude Code via Telegram.",
     no_args_is_help=True,
     rich_markup_mode=None if os.environ.get("NO_COLOR") else "rich",
@@ -71,7 +71,7 @@ def root(
         dir_okay=False,
     ),
 ) -> None:
-    """Global options for remote-task."""
+    """Global options for remotask."""
     if no_color:
         os.environ["NO_COLOR"] = "1"
 

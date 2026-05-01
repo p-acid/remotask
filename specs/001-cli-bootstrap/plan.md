@@ -5,7 +5,7 @@
 
 ## Summary
 
-remote-task의 골격을 세우는 첫 feature. typer 기반 단일 진입점 CLI, XDG 표준 디렉토리 레이아웃, SQLite 스키마와 간이 마이그레이션, 그리고 라이프사이클(PID·signal·lock)만 동작하는 stub daemon을 제공한다. 비즈니스 로직(텔레그램 봇·Agent SDK 실행)은 후속 feature에서 추가된다. macOS launchd 등록·해제까지 한 명령으로 가능하게 만들어 "노트북이 깨어 있는 한 항상 듣고 있다"의 인프라를 완성한다.
+remotask의 골격을 세우는 첫 feature. typer 기반 단일 진입점 CLI, XDG 표준 디렉토리 레이아웃, SQLite 스키마와 간이 마이그레이션, 그리고 라이프사이클(PID·signal·lock)만 동작하는 stub daemon을 제공한다. 비즈니스 로직(텔레그램 봇·Agent SDK 실행)은 후속 feature에서 추가된다. macOS launchd 등록·해제까지 한 명령으로 가능하게 만들어 "노트북이 깨어 있는 한 항상 듣고 있다"의 인프라를 완성한다.
 
 ## Technical Context
 
@@ -101,14 +101,14 @@ specs/001-cli-bootstrap/
 본 feature가 만들 코드 트리:
 
 ```text
-remote-task/
+remotask/
 ├── pyproject.toml
 ├── README.md
 ├── .gitignore                       (이미 존재)
 ├── PRD.md                           (이미 존재)
 ├── CLAUDE.md                        (이미 존재)
 │
-├── src/remote_task/
+├── src/remotask/
 │   ├── __init__.py
 │   ├── _version.py                  ← 단일 버전 출처
 │   ├── cli.py                       ← typer.Typer() 단일 진입점
@@ -166,7 +166,7 @@ remote-task/
         └── test_install_uninstall.py
 ```
 
-**Structure Decision**: 단일 Python 프로젝트(Option 1) 채택. PRD §8의 디렉토리와 일치하며, 이 feature는 `src/remote_task/` 안의 골격(commands·core·daemon·platform·migrations)과 `templates/`, `tests/`만 다룬다. 후속 feature(`002-telegram-trigger`, `003-agent-execution`)는 같은 트리 안에서 `core/bot.py`, `core/dispatcher.py`, `core/worker.py` 등을 추가하게 된다.
+**Structure Decision**: 단일 Python 프로젝트(Option 1) 채택. PRD §8의 디렉토리와 일치하며, 이 feature는 `src/remotask/` 안의 골격(commands·core·daemon·platform·migrations)과 `templates/`, `tests/`만 다룬다. 후속 feature(`002-telegram-trigger`, `003-agent-execution`)는 같은 트리 안에서 `core/bot.py`, `core/dispatcher.py`, `core/worker.py` 등을 추가하게 된다.
 
 ## Phase 0 — Research (개요)
 
@@ -214,7 +214,7 @@ post-design 결과: **PASS** (variance 1건은 그대로 추적).
 
 | Story | 단위 종류 | 파일 | 검증 방법 |
 |---|---|---|---|
-| US1: CLI 진입점·도움말 | E2E (subprocess) | `tests/integration/test_cli_help.py` | `remote-task --version` 출력·각 서브커맨드 `--help` 가용 |
+| US1: CLI 진입점·도움말 | E2E (subprocess) | `tests/integration/test_cli_help.py` | `remotask --version` 출력·각 서브커맨드 `--help` 가용 |
 | US1: 도움말 응답 시간 | 성능 | `tests/integration/test_cli_help.py::test_help_under_1s` | `time.perf_counter()`로 1초 미만 검증 |
 | US2: init 부트스트랩 | E2E | `tests/integration/test_init_command.py` | tmp XDG 환경에서 init → 디렉토리·파일·DB 스키마 존재·권한 검증 |
 | US2: init 멱등성 | E2E | `tests/integration/test_init_command.py::test_init_idempotent` | init 두 번 호출 후 변경 없음 |
@@ -254,13 +254,13 @@ uv run pytest tests/integration/test_daemon_lifecycle.py # US4
 uv run pytest tests/integration/test_install_uninstall.py # US5
 
 # 사용자 손으로 직접 검증 (quickstart.md의 절차)
-uv run remote-task --help
-uv run remote-task init
-uv run remote-task config set agent.max_concurrent 1
-uv run remote-task daemon run-foreground &
-uv run remote-task daemon status
-uv run remote-task daemon stop
-uv run remote-task install      # 실제 launchd 등록(원할 때만)
+uv run remotask --help
+uv run remotask init
+uv run remotask config set agent.max_concurrent 1
+uv run remotask daemon run-foreground &
+uv run remotask daemon status
+uv run remotask daemon stop
+uv run remotask install      # 실제 launchd 등록(원할 때만)
 ```
 
 이 흐름이 spec의 "Independent Test" 항목을 그대로 자동/수동 양쪽에서 재현한다.

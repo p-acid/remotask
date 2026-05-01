@@ -3,7 +3,7 @@
 **Feature Branch**: `001-cli-bootstrap`
 **Created**: 2026-05-01
 **Status**: Draft
-**Input**: User description: "CLI bootstrap with typer subcommands, XDG path layout, SQLite schema, and stub daemon entry point - foundation for installing and managing remote-task on macOS"
+**Input**: User description: "CLI bootstrap with typer subcommands, XDG path layout, SQLite schema, and stub daemon entry point - foundation for installing and managing remotask on macOS"
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -12,18 +12,18 @@
 
 ### User Story 1 - CLI 명령어가 설치되고 도움말이 표시된다 (Priority: P1)
 
-사용자는 패키지 설치 후 터미널에서 `remote-task` 명령을 호출할 수 있어야 하며, 사용 가능한 서브커맨드와 옵션을 도움말로 확인할 수 있어야 한다.
+사용자는 패키지 설치 후 터미널에서 `remotask` 명령을 호출할 수 있어야 하며, 사용 가능한 서브커맨드와 옵션을 도움말로 확인할 수 있어야 한다.
 
 **Why this priority**: CLI 진입점이 없으면 다른 모든 기능에 접근할 수 없다. 모든 후속 스토리의 전제 조건.
 
-**Independent Test**: 패키지를 설치(`uv tool install .`)한 뒤 `remote-task --help`, `remote-task --version`을 실행해 출력이 표시되면 통과.
+**Independent Test**: 패키지를 설치(`uv tool install .`)한 뒤 `remotask --help`, `remotask --version`을 실행해 출력이 표시되면 통과.
 
 **Acceptance Scenarios**:
 
-1. **Given** 사용자가 패키지를 설치한 직후, **When** `remote-task --version`을 실행하면, **Then** 현재 버전 문자열이 표준출력에 한 줄로 표시된다.
-2. **Given** 사용자가 패키지를 설치한 직후, **When** `remote-task --help`를 실행하면, **Then** `init`·`install`·`uninstall`·`daemon`·`config`·`login`·`sessions`·`projects` 서브커맨드가 모두 목록에 표시된다.
+1. **Given** 사용자가 패키지를 설치한 직후, **When** `remotask --version`을 실행하면, **Then** 현재 버전 문자열이 표준출력에 한 줄로 표시된다.
+2. **Given** 사용자가 패키지를 설치한 직후, **When** `remotask --help`를 실행하면, **Then** `init`·`install`·`uninstall`·`daemon`·`config`·`login`·`sessions`·`projects` 서브커맨드가 모두 목록에 표시된다.
 3. **Given** 사용자가 패키지를 설치한 직후, **When** 각 서브커맨드에 `--help`를 붙여 실행하면, **Then** 해당 서브커맨드의 사용법과 옵션이 표시된다.
-4. **Given** 사용자가 존재하지 않는 서브커맨드(예: `remote-task foo`)를 실행하면, **Then** 0이 아닌 종료 코드와 함께 알 수 없는 명령 메시지가 표시된다.
+4. **Given** 사용자가 존재하지 않는 서브커맨드(예: `remotask foo`)를 실행하면, **Then** 0이 아닌 종료 코드와 함께 알 수 없는 명령 메시지가 표시된다.
 
 ---
 
@@ -33,18 +33,18 @@
 
 **Why this priority**: 모든 후속 명령은 init이 만든 산출물에 의존한다. P1과 묶어 동등 우선순위로 둔다.
 
-**Independent Test**: 빈 사용자 환경에서 `remote-task init` 실행 후 (a) 표준 경로의 파일·디렉토리 존재, (b) DB 스키마 적용, (c) 설정 파일에 자동 생성된 토큰이 채워졌는지 확인.
+**Independent Test**: 빈 사용자 환경에서 `remotask init` 실행 후 (a) 표준 경로의 파일·디렉토리 존재, (b) DB 스키마 적용, (c) 설정 파일에 자동 생성된 토큰이 채워졌는지 확인.
 
 **Acceptance Scenarios**:
 
-1. **Given** XDG 경로에 어떤 파일도 없는 새 사용자, **When** `remote-task init`을 실행하면, **Then**
-   - `~/.config/remote-task/config.toml`이 권한 `0600`으로 생성된다.
-   - `~/.local/share/remote-task/state.db`가 생성되고 정의된 스키마가 적용된다.
-   - `~/.local/share/remote-task/logs/` 디렉토리가 생성된다.
+1. **Given** XDG 경로에 어떤 파일도 없는 새 사용자, **When** `remotask init`을 실행하면, **Then**
+   - `~/.config/remotask/config.toml`이 권한 `0600`으로 생성된다.
+   - `~/.local/share/remotask/state.db`가 생성되고 정의된 스키마가 적용된다.
+   - `~/.local/share/remotask/logs/` 디렉토리가 생성된다.
    - 자동 생성된 인증 토큰이 `config.toml`에 기록된다.
-2. **Given** 이미 init이 끝난 사용자, **When** `remote-task init`을 다시 실행하면, **Then** 기본값으로는 기존 파일을 보존하고 변경 없음을 보고한다.
-3. **Given** 이미 init이 끝난 사용자, **When** `remote-task init --force`를 실행하면, **Then** 기존 설정을 덮어쓰지만 데이터베이스의 사용자 데이터(sessions, projects)는 보존한다.
-4. **Given** 디스크 쓰기 권한이 없는 위치를 가리키도록 환경이 잘못 설정된 사용자, **When** `remote-task init`을 실행하면, **Then** 0이 아닌 종료 코드와 명확한 오류 메시지를 출력하고 부분 생성된 파일은 정리한다.
+2. **Given** 이미 init이 끝난 사용자, **When** `remotask init`을 다시 실행하면, **Then** 기본값으로는 기존 파일을 보존하고 변경 없음을 보고한다.
+3. **Given** 이미 init이 끝난 사용자, **When** `remotask init --force`를 실행하면, **Then** 기존 설정을 덮어쓰지만 데이터베이스의 사용자 데이터(sessions, projects)는 보존한다.
+4. **Given** 디스크 쓰기 권한이 없는 위치를 가리키도록 환경이 잘못 설정된 사용자, **When** `remotask init`을 실행하면, **Then** 0이 아닌 종료 코드와 명확한 오류 메시지를 출력하고 부분 생성된 파일은 정리한다.
 
 ---
 
@@ -54,12 +54,12 @@
 
 **Why this priority**: 사용자가 설치 후 첫 단계에서 텔레그램 토큰을 등록해야 하므로 init 직후 가장 먼저 필요한 기능이다.
 
-**Independent Test**: `remote-task config set telegram.bot_token=...` 실행 → `remote-task config get telegram.bot_token` 호출 → 동일 값 반환 → `config.toml`을 외부에서 열어도 동일 값 확인.
+**Independent Test**: `remotask config set telegram.bot_token=...` 실행 → `remotask config get telegram.bot_token` 호출 → 동일 값 반환 → `config.toml`을 외부에서 열어도 동일 값 확인.
 
 **Acceptance Scenarios**:
 
-1. **Given** init이 완료된 사용자, **When** `remote-task config get agent.max_concurrent`를 실행하면, **Then** 현재 값(예: `1`)이 출력된다.
-2. **Given** init이 완료된 사용자, **When** `remote-task config set agent.max_concurrent 2`를 실행하면, **Then** 설정 파일에 값이 반영되고 0 종료 코드로 성공한다.
+1. **Given** init이 완료된 사용자, **When** `remotask config get agent.max_concurrent`를 실행하면, **Then** 현재 값(예: `1`)이 출력된다.
+2. **Given** init이 완료된 사용자, **When** `remotask config set agent.max_concurrent 2`를 실행하면, **Then** 설정 파일에 값이 반영되고 0 종료 코드로 성공한다.
 3. **Given** 사용자가 정의되지 않은 키(예: `foo.bar`)를 set하려 하면, **Then** 명령은 거부되고 사용 가능한 키 목록을 안내한다.
 4. **Given** 사용자가 잘못된 형식(예: max_concurrent에 문자열)을 set하려 하면, **Then** 명령은 거부되고 기대 형식을 안내한다.
 5. **Given** 사용자가 시크릿 키(`telegram.bot_token`)를 get하면, **Then** 기본적으로 마스킹된 형태(`****1234`)로 표시되며, `--reveal` 플래그가 있을 때만 원문을 출력한다.
@@ -72,33 +72,33 @@
 
 **Why this priority**: launchd 등록(P3) 전에 데몬이 단독 실행 가능함을 검증해야 한다. 비즈니스 로직은 후속 feature에서 추가하므로 이 단계는 PID/lock/정상 종료만 동작하는 stub.
 
-**Independent Test**: 터미널 1에서 `remote-task daemon run-foreground` 실행 → 터미널 2에서 `remote-task daemon status`가 PID와 uptime을 보고 → `remote-task daemon stop`으로 종료 → status가 "not running"을 보고.
+**Independent Test**: 터미널 1에서 `remotask daemon run-foreground` 실행 → 터미널 2에서 `remotask daemon status`가 PID와 uptime을 보고 → `remotask daemon stop`으로 종료 → status가 "not running"을 보고.
 
 **Acceptance Scenarios**:
 
-1. **Given** init이 완료되고 데몬이 실행 중이 아닌 상태, **When** `remote-task daemon run-foreground`를 실행하면, **Then** 프로세스가 포그라운드에서 실행되고 PID 파일이 생성된다.
-2. **Given** 데몬이 이미 실행 중, **When** 또 다른 `remote-task daemon run-foreground`를 실행하면, **Then** 락 충돌로 거부되고 0이 아닌 종료 코드와 기존 PID를 안내한다.
-3. **Given** 데몬이 실행 중, **When** `remote-task daemon status`를 실행하면, **Then** PID·uptime·상태(`running`)가 출력된다.
-4. **Given** 데몬이 실행 중, **When** `remote-task daemon stop`을 실행하면, **Then** 데몬에 SIGTERM이 전송되고 5초 이내 종료되며 PID 파일이 정리된다.
-5. **Given** 데몬이 실행 중이 아님, **When** `remote-task daemon status`를 실행하면, **Then** "not running" 상태와 0이 아닌 종료 코드가 반환된다.
-6. **Given** 데몬이 비정상 종료되어 stale PID 파일이 남은 상태, **When** `remote-task daemon status`를 실행하면, **Then** stale로 진단하고 자동 정리한 뒤 "not running"을 보고한다.
+1. **Given** init이 완료되고 데몬이 실행 중이 아닌 상태, **When** `remotask daemon run-foreground`를 실행하면, **Then** 프로세스가 포그라운드에서 실행되고 PID 파일이 생성된다.
+2. **Given** 데몬이 이미 실행 중, **When** 또 다른 `remotask daemon run-foreground`를 실행하면, **Then** 락 충돌로 거부되고 0이 아닌 종료 코드와 기존 PID를 안내한다.
+3. **Given** 데몬이 실행 중, **When** `remotask daemon status`를 실행하면, **Then** PID·uptime·상태(`running`)가 출력된다.
+4. **Given** 데몬이 실행 중, **When** `remotask daemon stop`을 실행하면, **Then** 데몬에 SIGTERM이 전송되고 5초 이내 종료되며 PID 파일이 정리된다.
+5. **Given** 데몬이 실행 중이 아님, **When** `remotask daemon status`를 실행하면, **Then** "not running" 상태와 0이 아닌 종료 코드가 반환된다.
+6. **Given** 데몬이 비정상 종료되어 stale PID 파일이 남은 상태, **When** `remotask daemon status`를 실행하면, **Then** stale로 진단하고 자동 정리한 뒤 "not running"을 보고한다.
 
 ---
 
 ### User Story 5 - install/uninstall 명령으로 macOS launchd에 등록·해제된다 (Priority: P3)
 
-사용자는 `remote-task install` 한 번으로 부팅 시 자동 시작되는 launchd 에이전트를 등록할 수 있고, `remote-task uninstall`로 깨끗이 제거할 수 있어야 한다.
+사용자는 `remotask install` 한 번으로 부팅 시 자동 시작되는 launchd 에이전트를 등록할 수 있고, `remotask uninstall`로 깨끗이 제거할 수 있어야 한다.
 
 **Why this priority**: 외출 중 트리거의 핵심 가치는 "노트북이 깨어 있는 한 항상 듣고 있다"이고, 이는 launchd 등록을 전제로 한다.
 
-**Independent Test**: `remote-task install` → `launchctl list | grep remote-task`로 등록 확인 → 데몬 헬스 응답 확인 → `remote-task uninstall` → 다시 list에서 사라짐 확인.
+**Independent Test**: `remotask install` → `launchctl list | grep remotask`로 등록 확인 → 데몬 헬스 응답 확인 → `remotask uninstall` → 다시 list에서 사라짐 확인.
 
 **Acceptance Scenarios**:
 
-1. **Given** init이 완료된 사용자, **When** `remote-task install`을 실행하면, **Then** `~/Library/LaunchAgents/`에 plist가 생성되고 `launchctl load`가 자동 실행되어 데몬이 즉시 시작된다.
+1. **Given** init이 완료된 사용자, **When** `remotask install`을 실행하면, **Then** `~/Library/LaunchAgents/`에 plist가 생성되고 `launchctl load`가 자동 실행되어 데몬이 즉시 시작된다.
 2. **Given** install이 완료되어 데몬이 실행 중인 사용자, **When** 노트북을 재부팅하면, **Then** 로그인 후 데몬이 자동으로 다시 실행된다.
-3. **Given** plist가 이미 등록된 상태, **When** `remote-task install`을 다시 실행하면, **Then** 사용자 확인 후 plist를 갱신하고 데몬을 재시작한다.
-4. **Given** install이 완료된 사용자, **When** `remote-task uninstall`을 실행하면, **Then** `launchctl unload`가 실행되고 plist가 삭제되며 사용자 데이터(config·db·logs)는 보존된다.
+3. **Given** plist가 이미 등록된 상태, **When** `remotask install`을 다시 실행하면, **Then** 사용자 확인 후 plist를 갱신하고 데몬을 재시작한다.
+4. **Given** install이 완료된 사용자, **When** `remotask uninstall`을 실행하면, **Then** `launchctl unload`가 실행되고 plist가 삭제되며 사용자 데이터(config·db·logs)는 보존된다.
 5. **Given** install된 데몬에서, **When** plist에 정의된 환경변수가 누락되어 데몬이 실패하면, **Then** launchd가 정해진 정책으로 재시작을 시도하며 그 시도 사실이 로그에 기록된다.
 
 ---
@@ -115,13 +115,13 @@
 
 **Acceptance Scenarios**:
 
-1. **Given** init이 완료된 사용자(projects 비어있음), **When** `remote-task projects list`를 실행하면, **Then** 빈 표 또는 "no projects yet" 메시지가 출력되고 종료 코드 0.
-2. **Given** init이 완료된 사용자, **When** `remote-task projects add ZXTL /Users/samuel/Developments/zextool`을 실행하면, **Then** projects 테이블에 행이 추가되고 종료 코드 0.
+1. **Given** init이 완료된 사용자(projects 비어있음), **When** `remotask projects list`를 실행하면, **Then** 빈 표 또는 "no projects yet" 메시지가 출력되고 종료 코드 0.
+2. **Given** init이 완료된 사용자, **When** `remotask projects add ZXTL /Users/samuel/Developments/zextool`을 실행하면, **Then** projects 테이블에 행이 추가되고 종료 코드 0.
 3. **Given** projects에 `ZXTL` 행이 있음, **When** 같은 키로 `add`를 다시 실행하면, **Then** 중복 거부 + 종료 코드 1.
 4. **Given** init이 완료된 사용자, **When** 형식이 맞지 않는 key(예: `zxtl-1`, `Z`, `TOOLONGKEYNAME`)로 `add`를 실행하면, **Then** key 형식 오류 + 사용 가능한 형식 안내.
 5. **Given** init이 완료된 사용자, **When** 존재하지 않는 경로로 `add`를 실행하면, **Then** 경로 오류 + 안내.
 6. **Given** init이 완료된 사용자, **When** git repo가 아닌 경로(`.git` 부재)로 `add`를 실행하면, **Then** "git 저장소가 아닙니다" 오류.
-7. **Given** projects에 행이 있음, **When** `remote-task projects remove ZXTL`을 실행하면, **Then** 해당 행이 삭제되고 종료 코드 0.
+7. **Given** projects에 행이 있음, **When** `remotask projects remove ZXTL`을 실행하면, **Then** 해당 행이 삭제되고 종료 코드 0.
 8. **Given** 존재하지 않는 키로 `remove`를 실행하면, **Then** "등록되지 않은 키" 메시지 + 종료 코드 1.
 9. **Given** projects에 여러 행이 있음, **When** `list`를 실행하면, **Then** jira_key·repo_path·base_branch·enabled 컬럼이 표 형태로 정렬 출력된다.
 
@@ -142,7 +142,7 @@
 ### Functional Requirements
 
 #### CLI 일반
-- **FR-001**: 시스템은 단일 진입점(`remote-task`)을 통해 모든 서브커맨드에 접근할 수 있게 해야 한다.
+- **FR-001**: 시스템은 단일 진입점(`remotask`)을 통해 모든 서브커맨드에 접근할 수 있게 해야 한다.
 - **FR-002**: 시스템은 `--version`과 `--help` 전역 옵션을 지원해야 한다.
 - **FR-003**: 모든 서브커맨드는 `--help`로 사용법을 출력해야 한다.
 - **FR-004**: 알 수 없는 명령·옵션은 명확한 오류와 0이 아닌 종료 코드로 응답해야 한다.

@@ -7,13 +7,13 @@ import time
 
 import typer
 
-from remote_task.core import logging as rt_logging
-from remote_task.core import paths
-from remote_task.platform import macos_launchd
+from remotask.core import logging as rt_logging
+from remotask.core import paths
+from remotask.platform import macos_launchd
 
 app = typer.Typer(
     name="install",
-    help="Register the remote-task daemon as a macOS launchd Launch Agent.",
+    help="Register the remotask daemon as a macOS launchd Launch Agent.",
     invoke_without_command=True,
     no_args_is_help=False,
 )
@@ -22,18 +22,18 @@ app = typer.Typer(
 def _ensure_initialized() -> None:
     if not paths.config_path().exists():
         typer.secho(
-            "remote-task is not initialized. Run `remote-task init` first.",
+            "remotask is not initialized. Run `remotask init` first.",
             fg=typer.colors.RED,
             err=True,
         )
         raise typer.Exit(code=3)
 
 
-def _resolve_remote_task_path() -> str:
-    found = shutil.which("remote-task")
+def _resolve_remotask_path() -> str:
+    found = shutil.which("remotask")
     if found:
         return found
-    return f"{sys.executable} -m remote_task"
+    return f"{sys.executable} -m remotask"
 
 
 def _wait_for_daemon(timeout: float = 5.0) -> None:
@@ -41,7 +41,7 @@ def _wait_for_daemon(timeout: float = 5.0) -> None:
     import os as _os
     if _os.environ.get("REMOTE_TASK_SKIP_HEALTH_POLL"):
         return
-    from remote_task.core import lifecycle  # local import to avoid cycle
+    from remotask.core import lifecycle  # local import to avoid cycle
     deadline = time.perf_counter() + timeout
     while time.perf_counter() < deadline:
         running, _ = lifecycle.is_running(paths.pid_path())
@@ -64,7 +64,7 @@ def install(
 
     rendered = macos_launchd.render_plist(
         label=label,
-        remote_task_path=_resolve_remote_task_path(),
+        remotask_path=_resolve_remotask_path(),
         env=macos_launchd.detect_environment(),
     )
 

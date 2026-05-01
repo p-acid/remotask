@@ -20,9 +20,9 @@ description: "Tasks for feature 001-cli-bootstrap"
 
 ## Path Conventions
 
-- 코드: `src/remote_task/`
+- 코드: `src/remotask/`
 - 테스트: `tests/unit/`, `tests/integration/`
-- 산출물: `pyproject.toml`, `templates/`, `src/remote_task/migrations/`
+- 산출물: `pyproject.toml`, `templates/`, `src/remotask/migrations/`
 
 ---
 
@@ -30,11 +30,11 @@ description: "Tasks for feature 001-cli-bootstrap"
 
 **Purpose**: Python 프로젝트 골격 + 린트·포맷 + 테스트 인프라 구성. 모든 후속 단계의 진입 조건.
 
-- [X] T001 Create `pyproject.toml` at repo root with package metadata, `[project.scripts] remote-task = "remote_task.cli:app"`, runtime deps (typer[all], platformdirs, tomli-w, structlog, pydantic, jinja2), dev deps (pytest, pytest-cov, ruff, mypy)
-- [X] T002 Create source tree: `src/remote_task/{__init__.py,_version.py,cli.py}`, `src/remote_task/{commands,core,daemon,platform,migrations}/__init__.py`, `templates/`, `tests/{__init__.py,unit/__init__.py,integration/__init__.py}`
-- [X] T003 [P] Configure ruff + mypy in `pyproject.toml` (`[tool.ruff]`, `[tool.mypy]`); enforce `target-version = "py311"`, `strict = true` for mypy on `src/remote_task/core/*`
+- [X] T001 Create `pyproject.toml` at repo root with package metadata, `[project.scripts] remotask = "remotask.cli:app"`, runtime deps (typer[all], platformdirs, tomli-w, structlog, pydantic, jinja2), dev deps (pytest, pytest-cov, ruff, mypy)
+- [X] T002 Create source tree: `src/remotask/{__init__.py,_version.py,cli.py}`, `src/remotask/{commands,core,daemon,platform,migrations}/__init__.py`, `templates/`, `tests/{__init__.py,unit/__init__.py,integration/__init__.py}`
+- [X] T003 [P] Configure ruff + mypy in `pyproject.toml` (`[tool.ruff]`, `[tool.mypy]`); enforce `target-version = "py311"`, `strict = true` for mypy on `src/remotask/core/*`
 - [X] T004 [P] Configure pytest in `pyproject.toml` (`[tool.pytest.ini_options]`): markers `unit`, `integration`, `local_only`; `addopts = "-ra --strict-markers"`; `testpaths = ["tests"]`
-- [X] T005 [P] Create `tests/conftest.py` with shared fixtures: `tmp_xdg_env` (monkeypatches `XDG_CONFIG_HOME`/`XDG_DATA_HOME`/`XDG_CACHE_HOME` to `tmp_path` subdirs), `cli_runner` (subprocess wrapper invoking `python -m remote_task`)
+- [X] T005 [P] Create `tests/conftest.py` with shared fixtures: `tmp_xdg_env` (monkeypatches `XDG_CONFIG_HOME`/`XDG_DATA_HOME`/`XDG_CACHE_HOME` to `tmp_path` subdirs), `cli_runner` (subprocess wrapper invoking `python -m remotask`)
 
 **Checkpoint**: `uv sync` 성공, `uv run pytest` 0개 테스트 정상 종료, `uv run ruff check` 통과.
 
@@ -50,11 +50,11 @@ description: "Tasks for feature 001-cli-bootstrap"
 - [X] T007 [P] Write unit tests for structlog config in `tests/unit/test_logging.py`: TTY/non-TTY 분기, JSON 라인 포맷, 컨텍스트 바인딩
 - [X] T008 [P] Write unit tests for SQLite migration runner in `tests/unit/test_db_migrations.py`: schema_version 생성, V0001 적용, 멱등성, 트랜잭션 롤백, status CHECK 제약, projects unique, session_events cascade delete
 - [X] T009 [P] Write unit tests for secrets in `tests/unit/test_secrets.py`: 토큰 길이/엔트로피, 마스킹(`****<last4>`), `is_secret_key()` 분류
-- [X] T010 Implement `src/remote_task/core/paths.py` using `platformdirs`: `config_dir()`, `data_dir()`, `cache_dir()`, `pid_path()`, `log_dir()`, `db_path()`, `config_path()` — all return `Path`
-- [X] T011 Implement `src/remote_task/core/logging.py`: `setup_logging(level, log_dir)` returning configured structlog logger, RotatingFileHandler (10MB × 5), TTY auto-detect renderer
-- [X] T012 Implement `src/remote_task/core/db.py`: `connect(db_path)` returning `sqlite3.Connection` with `PRAGMA journal_mode=WAL`, `apply_migrations(conn, migrations_dir)` runner that reads `V*.sql`, parses version, runs in transaction, records in `schema_version`
-- [X] T013 Create `src/remote_task/migrations/V0001__init.sql` with all 5 tables (schema_version, projects, sessions, session_events, locks) per data-model.md §2
-- [X] T014 Implement `src/remote_task/core/secrets.py`: `generate_token()` using `secrets.token_urlsafe(32)`, `mask(value)` returning `****<last4>`, `is_secret_key(dotted_key)` matching SECRET_KEYS set
+- [X] T010 Implement `src/remotask/core/paths.py` using `platformdirs`: `config_dir()`, `data_dir()`, `cache_dir()`, `pid_path()`, `log_dir()`, `db_path()`, `config_path()` — all return `Path`
+- [X] T011 Implement `src/remotask/core/logging.py`: `setup_logging(level, log_dir)` returning configured structlog logger, RotatingFileHandler (10MB × 5), TTY auto-detect renderer
+- [X] T012 Implement `src/remotask/core/db.py`: `connect(db_path)` returning `sqlite3.Connection` with `PRAGMA journal_mode=WAL`, `apply_migrations(conn, migrations_dir)` runner that reads `V*.sql`, parses version, runs in transaction, records in `schema_version`
+- [X] T013 Create `src/remotask/migrations/V0001__init.sql` with all 5 tables (schema_version, projects, sessions, session_events, locks) per data-model.md §2
+- [X] T014 Implement `src/remotask/core/secrets.py`: `generate_token()` using `secrets.token_urlsafe(32)`, `mask(value)` returning `****<last4>`, `is_secret_key(dotted_key)` matching SECRET_KEYS set
 - [X] T015 Run `uv run pytest tests/unit/test_paths.py tests/unit/test_logging.py tests/unit/test_db_migrations.py tests/unit/test_secrets.py -v` and ensure all pass
 
 **Checkpoint**: foundational 모듈 4개 + V0001 마이그레이션 + 단위 테스트 모두 통과. user story 진입 준비 완료.
@@ -63,43 +63,43 @@ description: "Tasks for feature 001-cli-bootstrap"
 
 ## Phase 3: User Story 1 — CLI 진입점·도움말 (Priority: P1) 🎯 MVP
 
-**Goal**: 사용자가 `remote-task`를 설치하고 `--version`, `--help`, 각 서브커맨드 `--help`를 호출해 사용법을 즉시 파악할 수 있다.
+**Goal**: 사용자가 `remotask`를 설치하고 `--version`, `--help`, 각 서브커맨드 `--help`를 호출해 사용법을 즉시 파악할 수 있다.
 
-**Independent Test**: `uv tool install .` 후 `remote-task --version`이 버전을 출력하고, `remote-task --help`가 8개 서브커맨드를 보여주며, 각 `<subcommand> --help`도 동작한다. `--help` 응답이 1초 이내(SC-002).
+**Independent Test**: `uv tool install .` 후 `remotask --version`이 버전을 출력하고, `remotask --help`가 8개 서브커맨드를 보여주며, 각 `<subcommand> --help`도 동작한다. `--help` 응답이 1초 이내(SC-002).
 
 ### Tests for User Story 1 (TDD — write FIRST, ensure FAIL)
 
-- [X] T016 [P] [US1] Write E2E test `tests/integration/test_cli_help.py::test_version_prints_string` (subprocess `remote-task --version` exit 0 + stdout 한 줄)
+- [X] T016 [P] [US1] Write E2E test `tests/integration/test_cli_help.py::test_version_prints_string` (subprocess `remotask --version` exit 0 + stdout 한 줄)
 - [X] T017 [P] [US1] Write E2E test `tests/integration/test_cli_help.py::test_help_lists_all_subcommands` (init, install, uninstall, daemon, config, login, sessions, projects 모두 포함)
 - [X] T018 [P] [US1] Write E2E test `tests/integration/test_cli_help.py::test_each_subcommand_help` (loop over 8 subcommands, `--help` exit 0 + non-empty stdout)
-- [X] T019 [P] [US1] Write E2E test `tests/integration/test_cli_help.py::test_unknown_command_exits_nonzero` (`remote-task foo` exit code != 0)
+- [X] T019 [P] [US1] Write E2E test `tests/integration/test_cli_help.py::test_unknown_command_exits_nonzero` (`remotask foo` exit code != 0)
 - [X] T020 [P] [US1] Write performance test `tests/integration/test_cli_help.py::test_help_under_1s` (verify SC-002: `--help` < 1.0s)
 - [X] T103 [P] [US1] Write E2E test `tests/integration/test_cli_help.py::test_no_color_in_pipe` — verify SC-010 / FR-005: stdout has no ANSI escapes when piped (subprocess with `stdout=PIPE` and `--no-color` or auto-detect via `NO_COLOR=1`)
 
 ### Implementation for User Story 1
 
-- [X] T021 [US1] Implement `src/remote_task/_version.py` with `__version__ = "0.1.0"` constant
-- [X] T022 [US1] Implement `src/remote_task/cli.py` with `app = typer.Typer(name="remote-task", no_args_is_help=True)`, global options `--version` (callback), `--verbose`, `--no-color`, `--config`
-- [X] T023 [US1] Implement `src/remote_task/__main__.py` so `python -m remote_task` invokes `cli.app()`
-- [X] T024 [P] [US1] Create stub subcommand `src/remote_task/commands/init.py` with `app: typer.Typer` and a no-op `init()` function (full impl in US2); register help text from contract
-- [X] T025 [P] [US1] Create stub subcommand `src/remote_task/commands/install.py` mirror pattern (full impl in US5)
-- [X] T026 [P] [US1] Create stub subcommand `src/remote_task/commands/uninstall.py` mirror pattern
-- [X] T027 [P] [US1] Create stub subcommand `src/remote_task/commands/daemon.py` with sub-Typer for run-foreground/start/stop/status/logs; bodies print "not implemented" until US4
-- [X] T028 [P] [US1] Create stub subcommand `src/remote_task/commands/config_cmd.py` mirror pattern (full impl in US3)
-- [X] T029 [P] [US1] Create stub subcommand `src/remote_task/commands/login.py` printing "stub — implemented in 002-telegram-trigger"
-- [X] T030 [P] [US1] Create stub subcommand `src/remote_task/commands/sessions.py` printing "stub — implemented in 003-agent-execution"; `list` outputs "no sessions yet"
-- [X] T031 [P] [US1] Create stub subcommand `src/remote_task/commands/projects.py` with sub-Typer scaffold for `list`/`add`/`remove` (full impl in US6)
+- [X] T021 [US1] Implement `src/remotask/_version.py` with `__version__ = "0.1.0"` constant
+- [X] T022 [US1] Implement `src/remotask/cli.py` with `app = typer.Typer(name="remotask", no_args_is_help=True)`, global options `--version` (callback), `--verbose`, `--no-color`, `--config`
+- [X] T023 [US1] Implement `src/remotask/__main__.py` so `python -m remotask` invokes `cli.app()`
+- [X] T024 [P] [US1] Create stub subcommand `src/remotask/commands/init.py` with `app: typer.Typer` and a no-op `init()` function (full impl in US2); register help text from contract
+- [X] T025 [P] [US1] Create stub subcommand `src/remotask/commands/install.py` mirror pattern (full impl in US5)
+- [X] T026 [P] [US1] Create stub subcommand `src/remotask/commands/uninstall.py` mirror pattern
+- [X] T027 [P] [US1] Create stub subcommand `src/remotask/commands/daemon.py` with sub-Typer for run-foreground/start/stop/status/logs; bodies print "not implemented" until US4
+- [X] T028 [P] [US1] Create stub subcommand `src/remotask/commands/config_cmd.py` mirror pattern (full impl in US3)
+- [X] T029 [P] [US1] Create stub subcommand `src/remotask/commands/login.py` printing "stub — implemented in 002-telegram-trigger"
+- [X] T030 [P] [US1] Create stub subcommand `src/remotask/commands/sessions.py` printing "stub — implemented in 003-agent-execution"; `list` outputs "no sessions yet"
+- [X] T031 [P] [US1] Create stub subcommand `src/remotask/commands/projects.py` with sub-Typer scaffold for `list`/`add`/`remove` (full impl in US6)
 - [X] T032 [US1] Wire all stub subcommands into `cli.py` via `app.add_typer(...)`; ensure each appears in `--help`
 
-**Checkpoint**: T016~T020의 모든 E2E 테스트 통과. 사용자가 `remote-task --help`로 8개 서브커맨드를 확인할 수 있다. quickstart.md Step 1 검증 가능.
+**Checkpoint**: T016~T020의 모든 E2E 테스트 통과. 사용자가 `remotask --help`로 8개 서브커맨드를 확인할 수 있다. quickstart.md Step 1 검증 가능.
 
 ---
 
 ## Phase 4: User Story 2 — init 환경 부트스트랩 (Priority: P1) 🎯 MVP
 
-**Goal**: `remote-task init` 한 번으로 XDG 디렉토리 + config.toml(0600) + state.db + 토큰이 생성되어 후속 명령이 즉시 동작 가능한 상태에 도달한다.
+**Goal**: `remotask init` 한 번으로 XDG 디렉토리 + config.toml(0600) + state.db + 토큰이 생성되어 후속 명령이 즉시 동작 가능한 상태에 도달한다.
 
-**Independent Test**: 격리된 XDG 환경에서 `remote-task init` 실행 → 산출물 존재·권한·DB 스키마·토큰 자동 생성 검증. 멱등성과 `--force` 동작 검증. 3초 이내(SC-003).
+**Independent Test**: 격리된 XDG 환경에서 `remotask init` 실행 → 산출물 존재·권한·DB 스키마·토큰 자동 생성 검증. 멱등성과 `--force` 동작 검증. 3초 이내(SC-003).
 
 ### Tests for User Story 2 (TDD)
 
@@ -115,14 +115,14 @@ description: "Tasks for feature 001-cli-bootstrap"
 
 ### Implementation for User Story 2
 
-- [X] T042 [US2] Implement `src/remote_task/core/config.py` with pydantic models (AgentConfig, DaemonConfig, TelegramConfig, LoggingConfig, PathsConfig, ConfigSchema) per contracts/config.schema.md §3
+- [X] T042 [US2] Implement `src/remotask/core/config.py` with pydantic models (AgentConfig, DaemonConfig, TelegramConfig, LoggingConfig, PathsConfig, ConfigSchema) per contracts/config.schema.md §3
 - [X] T043 [US2] Add to `core/config.py`: `load(path) -> ConfigSchema`, `save(path, schema)` writing TOML with `tomli_w`, `get_dotted(schema, "a.b.c")`, `set_dotted(schema, "a.b.c", value)`; reject undefined keys
 - [X] T044 [US2] Implement `core/config.py::ensure_permission_0600(path)` validation; called on every load/save
-- [X] T045 [US2] Implement `src/remote_task/commands/init.py::init(force: bool = False, interpreter: Path | None = None)` per contracts/cli-commands.md §3: create dirs, generate token, write config.toml 0600, run db migrations, print summary
+- [X] T045 [US2] Implement `src/remotask/commands/init.py::init(force: bool = False, interpreter: Path | None = None)` per contracts/cli-commands.md §3: create dirs, generate token, write config.toml 0600, run db migrations, print summary
 - [X] T046 [US2] Add rollback handler in init: `try/except` cleans newly created files on failure, preserves pre-existing
 - [X] T047 [US2] Update `core/db.py::connect()` to invoke `apply_migrations` automatically on first call
 
-**Checkpoint**: T033~T041 모든 테스트 통과. 사용자가 `remote-task init` 한 번으로 환경 부트스트랩 완료. quickstart.md Step 2 검증 가능. **여기까지 P1 완료 → MVP의 첫 절반 도달**.
+**Checkpoint**: T033~T041 모든 테스트 통과. 사용자가 `remotask init` 한 번으로 환경 부트스트랩 완료. quickstart.md Step 2 검증 가능. **여기까지 P1 완료 → MVP의 첫 절반 도달**.
 
 ---
 
@@ -193,7 +193,7 @@ description: "Tasks for feature 001-cli-bootstrap"
 
 ## Phase 7: User Story 5 — install / uninstall (Priority: P3)
 
-**Goal**: `remote-task install` 한 명령으로 macOS launchd에 등록되어 부팅 시 자동 실행. `uninstall`로 깨끗이 제거.
+**Goal**: `remotask install` 한 명령으로 macOS launchd에 등록되어 부팅 시 자동 실행. `uninstall`로 깨끗이 제거.
 
 **Independent Test**: `install` 후 plist 파일 존재 + `launchctl list`에 노출 + 데몬 헬스 응답. `uninstall` 후 사용자 데이터 보존.
 
@@ -215,7 +215,7 @@ description: "Tasks for feature 001-cli-bootstrap"
 ### Implementation for User Story 5
 
 - [X] T089 [US5] Create `templates/launchd.plist.j2` Jinja2 template per contracts/launchd-plist.md §1
-- [X] T090 [US5] Implement `platform/macos_launchd.py::render_plist(label, remote_task_path, env)` using Jinja2 + parsing back via `plistlib` to validate
+- [X] T090 [US5] Implement `platform/macos_launchd.py::render_plist(label, remotask_path, env)` using Jinja2 + parsing back via `plistlib` to validate
 - [X] T091 [US5] Implement `platform/macos_launchd.py::detect_environment()` returning dict of PATH (claude dir 포함 보장), HOME, LANG, XDG_*
 - [X] T092 [US5] Implement `platform/macos_launchd.py::launchctl_load(plist_path)` and `launchctl_unload(plist_path)` via `subprocess.run`; surface errors with structured logging
 - [X] T093 [US5] Implement `commands/install.py::install(label, interpreter, force)` per contract: detect env, render, write plist, load via launchctl, poll 5s for daemon health
@@ -248,14 +248,14 @@ description: "Tasks for feature 001-cli-bootstrap"
 
 ### Implementation for User Story 6
 
-- [X] T120 [US6] Implement `src/remote_task/core/projects.py::validate_jira_key(key)` raising ValueError with hint on failure
-- [X] T121 [US6] Implement `src/remote_task/core/projects.py::validate_repo_path(path)` checking exists + is_dir + has `.git` subdir; raise ValueError with hint
-- [X] T122 [US6] Implement `src/remote_task/core/projects.py::add(conn, jira_key, repo_path, base_branch)` performing INSERT, raising on UNIQUE conflict
-- [X] T123 [US6] Implement `src/remote_task/core/projects.py::list_all(conn)` returning list of dict rows ordered by jira_key
-- [X] T124 [US6] Implement `src/remote_task/core/projects.py::remove(conn, jira_key)` raising if missing
-- [X] T125 [US6] Implement `src/remote_task/commands/projects.py::list_()` calling `core.projects.list_all` + tabulate or simple aligned text output
-- [X] T126 [US6] Implement `src/remote_task/commands/projects.py::add(jira_key, repo_path, branch)` orchestrating validators + core.add + structured success message
-- [X] T127 [US6] Implement `src/remote_task/commands/projects.py::remove(jira_key)` orchestrating core.remove + structured success message
+- [X] T120 [US6] Implement `src/remotask/core/projects.py::validate_jira_key(key)` raising ValueError with hint on failure
+- [X] T121 [US6] Implement `src/remotask/core/projects.py::validate_repo_path(path)` checking exists + is_dir + has `.git` subdir; raise ValueError with hint
+- [X] T122 [US6] Implement `src/remotask/core/projects.py::add(conn, jira_key, repo_path, base_branch)` performing INSERT, raising on UNIQUE conflict
+- [X] T123 [US6] Implement `src/remotask/core/projects.py::list_all(conn)` returning list of dict rows ordered by jira_key
+- [X] T124 [US6] Implement `src/remotask/core/projects.py::remove(conn, jira_key)` raising if missing
+- [X] T125 [US6] Implement `src/remotask/commands/projects.py::list_()` calling `core.projects.list_all` + tabulate or simple aligned text output
+- [X] T126 [US6] Implement `src/remotask/commands/projects.py::add(jira_key, repo_path, branch)` orchestrating validators + core.add + structured success message
+- [X] T127 [US6] Implement `src/remotask/commands/projects.py::remove(jira_key)` orchestrating core.remove + structured success message
 
 **Checkpoint**: T108~T119 모든 테스트 통과. 사용자가 다음 feature(`002-telegram-trigger`)에 진입하기 전에 매핑을 등록할 수 있다. **MVP feature 001 완료**.
 
@@ -268,10 +268,10 @@ description: "Tasks for feature 001-cli-bootstrap"
 - [X] T095 [P] Update `README.md` at repo root with installation & quickstart link
 - [X] T096 [P] Add `--help` 응답 시간 회귀 테스트 `tests/integration/test_cli_help.py::test_help_under_1s_after_full_load` (모든 서브커맨드 등록 후에도 SC-002 유지)
 - [X] T097 Run full quickstart.md flow manually (Steps 1~5) on the real notebook; record any deviations as follow-up issues
-- [X] T098 Run `uv run pytest --cov=remote_task tests/` and ensure coverage ≥ 70% (per quickstart.md 종료 조건)
-- [X] T099 Run `uv run ruff check src/ tests/` and `uv run mypy src/remote_task/core/` with zero findings
+- [X] T098 Run `uv run pytest --cov=remotask tests/` and ensure coverage ≥ 70% (per quickstart.md 종료 조건)
+- [X] T099 Run `uv run ruff check src/ tests/` and `uv run mypy src/remotask/core/` with zero findings
 - [X] T100 Sanity check: `uv tool install .` from a fresh shell + run quickstart Step 1 commands without errors
-- [X] T101 Audit: confirm no SECRET key plaintext leaks in any test fixture or log output (grep `tests/` and `~/.local/share/remote-task/logs/`)
+- [X] T101 Audit: confirm no SECRET key plaintext leaks in any test fixture or log output (grep `tests/` and `~/.local/share/remotask/logs/`)
 - [X] T102 Verify constitution gates checklist in `plan.md` is fully `[x] PASS` after implementation; update Complexity Tracking if any new variance emerged
 - [X] T128 [P] Write stress test `tests/integration/test_concurrency_stress.py::test_init_concurrent_100x` — verify SC-008: 동시 init 시도 100회 반복, 한쪽만 성공·다른 쪽 거부, 데이터 무결성 (DB schema·config 0600 유지)
 - [X] T129 [P] Write stress test `tests/integration/test_concurrency_stress.py::test_daemon_concurrent_spawn_100x` — verify SC-008: 동시 `daemon run-foreground` 100회 반복, 락 충돌이 정확히 한 번만 성공, PID 파일 일관성

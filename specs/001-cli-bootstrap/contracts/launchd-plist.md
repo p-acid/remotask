@@ -9,7 +9,7 @@
 ## 0. 위치 / Label
 
 - 위치: `~/Library/LaunchAgents/<label>.plist`
-- 기본 Label: `kr.mission-driven.remote-task` (역방향 도메인 표기)
+- 기본 Label: `kr.mission-driven.remotask` (역방향 도메인 표기)
 - Label은 `--label` 옵션으로 override 가능
 
 ## 1. plist 키 / 값
@@ -21,11 +21,11 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>kr.mission-driven.remote-task</string>
+  <string>kr.mission-driven.remotask</string>
 
   <key>ProgramArguments</key>
   <array>
-    <string>{{ remote_task_path }}</string>
+    <string>{{ remotask_path }}</string>
     <string>daemon</string>
     <string>run-foreground</string>
   </array>
@@ -82,12 +82,12 @@
 
 | 변수 | 값 결정 방법 |
 |---|---|
-| `remote_task_path` | `shutil.which("remote-task")` 또는 `--interpreter` 명시 |
+| `remotask_path` | `shutil.which("remotask")` 또는 `--interpreter` 명시 |
 | `home` | `os.path.expanduser("~")` |
 | `path` | 현재 셸 `$PATH`. 단, `claude` CLI가 발견되는 디렉토리는 항상 포함 |
 | `lang` | 현재 환경 `$LANG` (없으면 `en_US.UTF-8`) |
 | `xdg_*_home` | 현재 환경값. 비어있으면 표준 기본값 |
-| `data_dir` | `$XDG_DATA_HOME/remote-task` |
+| `data_dir` | `$XDG_DATA_HOME/remotask` |
 
 ## 3. 주요 동작 의미
 

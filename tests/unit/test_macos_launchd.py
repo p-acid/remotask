@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from remote_task.platform import macos_launchd
+from remotask.platform import macos_launchd
 
 
 def _parse(rendered: str) -> dict:
@@ -14,8 +14,8 @@ def _parse(rendered: str) -> dict:
 
 def test_render_basic(tmp_path: Path) -> None:
     rendered = macos_launchd.render_plist(
-        label="kr.mission-driven.remote-task",
-        remote_task_path="/Users/samuel/.local/bin/remote-task",
+        label="kr.mission-driven.remotask",
+        remotask_path="/Users/samuel/.local/bin/remotask",
         env={
             "PATH": "/opt/homebrew/bin:/usr/bin",
             "HOME": "/Users/samuel",
@@ -26,9 +26,9 @@ def test_render_basic(tmp_path: Path) -> None:
         },
     )
     parsed = _parse(rendered)
-    assert parsed["Label"] == "kr.mission-driven.remote-task"
+    assert parsed["Label"] == "kr.mission-driven.remotask"
     assert parsed["ProgramArguments"] == [
-        "/Users/samuel/.local/bin/remote-task",
+        "/Users/samuel/.local/bin/remotask",
         "daemon",
         "run-foreground",
     ]
@@ -38,8 +38,8 @@ def test_render_basic(tmp_path: Path) -> None:
 
 def test_render_keep_alive_dict() -> None:
     rendered = macos_launchd.render_plist(
-        label="kr.mission-driven.remote-task",
-        remote_task_path="/usr/local/bin/remote-task",
+        label="kr.mission-driven.remotask",
+        remotask_path="/usr/local/bin/remotask",
         env={
             "PATH": "/usr/bin",
             "HOME": "/Users/x",
@@ -58,8 +58,8 @@ def test_render_keep_alive_dict() -> None:
 
 def test_render_path_env_preserved() -> None:
     rendered = macos_launchd.render_plist(
-        label="kr.mission-driven.remote-task",
-        remote_task_path="/usr/local/bin/remote-task",
+        label="kr.mission-driven.remotask",
+        remotask_path="/usr/local/bin/remotask",
         env={
             "PATH": "/opt/claude:/usr/bin",
             "HOME": "/Users/x",
@@ -81,7 +81,7 @@ def test_label_validation_rejects_invalid() -> None:
 
 
 def test_label_validation_accepts_reverse_domain() -> None:
-    macos_launchd.validate_label("kr.mission-driven.remote-task")
+    macos_launchd.validate_label("kr.mission-driven.remotask")
     macos_launchd.validate_label("com.example.app")
 
 

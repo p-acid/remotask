@@ -1,4 +1,4 @@
-"""XDG Base Directory paths for remote-task.
+"""XDG Base Directory paths for remotask.
 
 Honors ``XDG_*_HOME`` environment variables when set; otherwise falls back
 to the XDG defaults under ``$HOME``. This is enforced on every platform
@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-_APP = "remote-task"
+_APP = "remotask"
 
 
 def _xdg(env_var: str, default_relative: str) -> Path:

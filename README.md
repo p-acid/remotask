@@ -1,12 +1,12 @@
-# remote-task
+# remotask
 
 Remote agent trigger for Claude Code via Telegram. The first feature
 (`001-cli-bootstrap`) ships the foundation:
 
-- `remote-task` CLI with subcommands (init, install, uninstall, daemon,
+- `remotask` CLI with subcommands (init, install, uninstall, daemon,
   config, login, sessions, projects).
-- XDG-compliant data layout under `~/.config/remote-task` and
-  `~/.local/share/remote-task`.
+- XDG-compliant data layout under `~/.config/remotask` and
+  `~/.local/share/remotask`.
 - SQLite schema for sessions, projects, session_events, locks (V0001).
 - Stub daemon with PID file + flock + signal handlers (single-instance).
 - macOS launchd registration via `install` / `uninstall`.
@@ -28,11 +28,11 @@ See `specs/001-cli-bootstrap/quickstart.md` for the full step-by-step
 verification procedure.
 
 ```bash
-remote-task init                                  # bootstrap config + DB + token
-remote-task config set agent.max_concurrent 1
-remote-task projects add ZXTL ~/Developments/zextool
-remote-task install                               # register macOS launchd agent
-remote-task daemon status                         # ✓ running
+remotask init                                  # bootstrap config + DB + token
+remotask config set agent.max_concurrent 1
+remotask projects add ZXTL ~/Developments/zextool
+remotask install                               # register macOS launchd agent
+remotask daemon status                         # ✓ running
 ```
 
 ## Development
@@ -41,7 +41,7 @@ remote-task daemon status                         # ✓ running
 uv sync
 uv run pytest                          # full test suite (~25s)
 uv run ruff check src/ tests/
-uv run mypy src/remote_task/core/
+uv run mypy src/remotask/core/
 ```
 
 Tests are organised under `tests/unit/` and `tests/integration/`. The

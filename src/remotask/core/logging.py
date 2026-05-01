@@ -1,4 +1,4 @@
-"""Structured logging configuration for remote-task."""
+"""Structured logging configuration for remotask."""
 from __future__ import annotations
 
 import contextlib
@@ -10,7 +10,7 @@ from typing import Any
 
 import structlog
 
-_AUDIT_LOGGER_NAME = "remote_task.audit"
+_AUDIT_LOGGER_NAME = "remotask.audit"
 _DEFAULT_MAX_BYTES = 10 * 1024 * 1024
 _DEFAULT_BACKUP_COUNT = 5
 
@@ -25,7 +25,7 @@ def setup_logging(
 ) -> Any:
     """Configure stdlib + structlog.
 
-    - JSON Lines to ``log_dir/remote-task.log`` (always).
+    - JSON Lines to ``log_dir/remotask.log`` (always).
     - Audit logger to ``log_dir/audit.log`` (separate handler).
     - Console output: ConsoleRenderer if TTY, JSONRenderer otherwise (or when
       ``force_json`` is True).
@@ -41,7 +41,7 @@ def setup_logging(
             h.close()
 
     file_handler = logging.handlers.RotatingFileHandler(
-        log_dir / "remote-task.log",
+        log_dir / "remotask.log",
         maxBytes=max_bytes,
         backupCount=backup_count,
         encoding="utf-8",
@@ -94,7 +94,7 @@ def setup_logging(
     audit.setLevel(logging.INFO)
     audit.propagate = False
 
-    return structlog.get_logger().bind(component="remote_task")
+    return structlog.get_logger().bind(component="remotask")
 
 
 def audit_logger() -> Any:

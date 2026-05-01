@@ -3,14 +3,14 @@ from __future__ import annotations
 
 import typer
 
-from remote_task.core import config as rt_config
-from remote_task.core import logging as rt_logging
-from remote_task.core import paths
-from remote_task.core import secrets as rt_secrets
+from remotask.core import config as rt_config
+from remotask.core import logging as rt_logging
+from remotask.core import paths
+from remotask.core import secrets as rt_secrets
 
 app = typer.Typer(
     name="config",
-    help="Inspect and modify remote-task configuration.",
+    help="Inspect and modify remotask configuration.",
     no_args_is_help=True,
 )
 
@@ -19,7 +19,7 @@ def _ensure_initialized() -> None:
     cp = paths.config_path()
     if not cp.exists():
         typer.secho(
-            "remote-task is not initialized. Run `remote-task init` first.",
+            "remotask is not initialized. Run `remotask init` first.",
             fg=typer.colors.RED,
             err=True,
         )

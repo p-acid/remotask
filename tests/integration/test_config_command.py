@@ -7,11 +7,11 @@ from pathlib import Path
 
 
 def _config_path(tmp_xdg_env: Path) -> Path:
-    return tmp_xdg_env / "config" / "remote-task" / "config.toml"
+    return tmp_xdg_env / "config" / "remotask" / "config.toml"
 
 
 def _data_dir(tmp_xdg_env: Path) -> Path:
-    return tmp_xdg_env / "data" / "remote-task"
+    return tmp_xdg_env / "data" / "remotask"
 
 
 def _read_toml(p: Path) -> dict:

@@ -36,7 +36,7 @@ _TESTS_DIR = Path(__file__).parent
 
 @pytest.fixture
 def cli_runner(tmp_xdg_env: Path) -> Callable[..., CliResult]:
-    """Run remote-task via subprocess with isolated XDG env."""
+    """Run remotask via subprocess with isolated XDG env."""
 
     def run(
         *args: str,
@@ -44,7 +44,7 @@ def cli_runner(tmp_xdg_env: Path) -> Callable[..., CliResult]:
         timeout: float = 30.0,
         extra_env: dict[str, str] | None = None,
     ) -> CliResult:
-        cmd = [sys.executable, "-m", "remote_task", *args]
+        cmd = [sys.executable, "-m", "remotask", *args]
         env = os.environ.copy()
         env["XDG_CONFIG_HOME"] = str(tmp_xdg_env / "config")
         env["XDG_DATA_HOME"] = str(tmp_xdg_env / "data")

@@ -14,7 +14,7 @@ def _spawn(tmp_xdg_env: Path, *args: str) -> subprocess.Popen:
     env["XDG_DATA_HOME"] = str(tmp_xdg_env / "data")
     env["XDG_CACHE_HOME"] = str(tmp_xdg_env / "cache")
     return subprocess.Popen(
-        [sys.executable, "-m", "remote_task", *args],
+        [sys.executable, "-m", "remotask", *args],
         env=env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -62,7 +62,7 @@ def _wait_until_no_pidfile(p: Path, timeout: float = 5.0) -> None:
 
 def test_run_foreground_writes_pid_and_acquires_lock(cli_runner, tmp_xdg_env: Path) -> None:
     cli_runner("init")
-    pid_path = tmp_xdg_env / "data" / "remote-task" / "daemon.pid"
+    pid_path = tmp_xdg_env / "data" / "remotask" / "daemon.pid"
     proc = _spawn(tmp_xdg_env, "daemon", "run-foreground")
     try:
         pid = _wait_for_pidfile(pid_path)
@@ -74,7 +74,7 @@ def test_run_foreground_writes_pid_and_acquires_lock(cli_runner, tmp_xdg_env: Pa
 
 def test_second_instance_rejected(cli_runner, tmp_xdg_env: Path) -> None:
     cli_runner("init")
-    pid_path = tmp_xdg_env / "data" / "remote-task" / "daemon.pid"
+    pid_path = tmp_xdg_env / "data" / "remotask" / "daemon.pid"
     proc = _spawn(tmp_xdg_env, "daemon", "run-foreground")
     try:
         _wait_for_pidfile(pid_path)
@@ -86,7 +86,7 @@ def test_second_instance_rejected(cli_runner, tmp_xdg_env: Path) -> None:
 
 def test_status_running(cli_runner, tmp_xdg_env: Path) -> None:
     cli_runner("init")
-    pid_path = tmp_xdg_env / "data" / "remote-task" / "daemon.pid"
+    pid_path = tmp_xdg_env / "data" / "remotask" / "daemon.pid"
     proc = _spawn(tmp_xdg_env, "daemon", "run-foreground")
     try:
         _wait_for_pidfile(pid_path)
@@ -109,7 +109,7 @@ def test_status_not_running(cli_runner, tmp_xdg_env: Path) -> None:
 
 def test_stop_graceful(cli_runner, tmp_xdg_env: Path) -> None:
     cli_runner("init")
-    pid_path = tmp_xdg_env / "data" / "remote-task" / "daemon.pid"
+    pid_path = tmp_xdg_env / "data" / "remotask" / "daemon.pid"
     proc = _spawn(tmp_xdg_env, "daemon", "run-foreground")
     try:
         _wait_for_pidfile(pid_path)
@@ -124,7 +124,7 @@ def test_stop_graceful(cli_runner, tmp_xdg_env: Path) -> None:
 def test_stop_under_5s(cli_runner, tmp_xdg_env: Path) -> None:
     """SC-004: stop completes within 5 seconds."""
     cli_runner("init")
-    pid_path = tmp_xdg_env / "data" / "remote-task" / "daemon.pid"
+    pid_path = tmp_xdg_env / "data" / "remotask" / "daemon.pid"
     proc = _spawn(tmp_xdg_env, "daemon", "run-foreground")
     try:
         _wait_for_pidfile(pid_path)
@@ -139,7 +139,7 @@ def test_stop_under_5s(cli_runner, tmp_xdg_env: Path) -> None:
 
 def test_stale_pid_cleanup_via_status(cli_runner, tmp_xdg_env: Path) -> None:
     cli_runner("init")
-    pid_path = tmp_xdg_env / "data" / "remote-task" / "daemon.pid"
+    pid_path = tmp_xdg_env / "data" / "remotask" / "daemon.pid"
     pid_path.write_text("99999999")
     result = cli_runner("daemon", "status", expect_exit=None)
     assert result.returncode == 1
@@ -149,7 +149,7 @@ def test_stale_pid_cleanup_via_status(cli_runner, tmp_xdg_env: Path) -> None:
 
 def test_start_background_spawn(cli_runner, tmp_xdg_env: Path) -> None:
     cli_runner("init")
-    pid_path = tmp_xdg_env / "data" / "remote-task" / "daemon.pid"
+    pid_path = tmp_xdg_env / "data" / "remotask" / "daemon.pid"
     result = cli_runner("daemon", "start", timeout=10)
     assert result.returncode == 0
     pid = _wait_for_pidfile(pid_path)

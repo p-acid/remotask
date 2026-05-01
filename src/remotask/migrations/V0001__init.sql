@@ -1,4 +1,4 @@
--- V0001 — initial schema for remote-task
+-- V0001 — initial schema for remotask
 -- See specs/001-cli-bootstrap/data-model.md for rationale.
 
 CREATE TABLE projects (

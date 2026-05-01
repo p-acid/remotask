@@ -121,7 +121,7 @@ Jira는 모든 task·이슈의 단일 진실 원천이다.
 
 자동 실행은 인간 감시 없이 동작하므로, 사후 추적이 보장되어야 한다.
 
-- 모든 로그는 구조화 로깅(JSON lines), `~/.local/share/remote-task/logs/`에 보관한다.
+- 모든 로그는 구조화 로깅(JSON lines), `~/.local/share/remotask/logs/`에 보관한다.
 - 모든 세션의 시작·종료·실패는 SQLite `sessions` + `session_events`에 기록된다.
 - 다음 행위는 별도 audit 로그에 남긴다:
   - 외부 네트워크 호출
@@ -142,9 +142,9 @@ Jira는 모든 task·이슈의 단일 진실 원천이다.
 
 ### 디렉토리 표준
 - 사용자 데이터는 XDG Base Directory 표준을 따른다:
-  - 설정: `~/.config/remote-task/`
-  - 상태(DB·로그·소켓): `~/.local/share/remote-task/`
-  - 캐시: `~/.cache/remote-task/`
+  - 설정: `~/.config/remotask/`
+  - 상태(DB·로그·소켓): `~/.local/share/remotask/`
+  - 캐시: `~/.cache/remotask/`
 - 프로젝트 내부에는 사용자별 상태를 두지 않는다.
 
 ### IPC

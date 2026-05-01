@@ -11,12 +11,12 @@ def _agents_dir(tmp_xdg_env: Path) -> Path:
     return tmp_xdg_env / "LaunchAgents"
 
 
-def _plist_path(tmp_xdg_env: Path, label: str = "kr.mission-driven.remote-task") -> Path:
+def _plist_path(tmp_xdg_env: Path, label: str = "kr.mission-driven.remotask") -> Path:
     return _agents_dir(tmp_xdg_env) / f"{label}.plist"
 
 
 def _audit_path(tmp_xdg_env: Path) -> Path:
-    return tmp_xdg_env / "data" / "remote-task" / "logs" / "audit.log"
+    return tmp_xdg_env / "data" / "remotask" / "logs" / "audit.log"
 
 
 def _no_op(*args: object, **kwargs: object) -> None:
@@ -28,7 +28,7 @@ def stub_env(tmp_xdg_env: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, st
     """Env vars that subprocess CLI runs see — stub launchctl + LaunchAgents."""
     agents = _agents_dir(tmp_xdg_env)
     agents.mkdir()
-    log_file = tmp_xdg_env / "data" / "remote-task" / "logs" / "launchctl_calls.log"
+    log_file = tmp_xdg_env / "data" / "remotask" / "logs" / "launchctl_calls.log"
     log_file.parent.mkdir(parents=True, exist_ok=True)
     log_file.touch()
 
@@ -40,7 +40,7 @@ def stub_env(tmp_xdg_env: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, st
 
 
 def _read_calls(tmp_xdg_env: Path) -> dict[str, list[str]]:
-    log_file = tmp_xdg_env / "data" / "remote-task" / "logs" / "launchctl_calls.log"
+    log_file = tmp_xdg_env / "data" / "remotask" / "logs" / "launchctl_calls.log"
     calls: dict[str, list[str]] = {"load": [], "unload": []}
     if not log_file.exists():
         return calls
@@ -59,7 +59,7 @@ def test_install_creates_plist(cli_runner, tmp_xdg_env: Path, stub_env: dict[str
     plist = _plist_path(tmp_xdg_env)
     assert plist.exists()
     parsed = plistlib.loads(plist.read_bytes())
-    assert parsed["Label"] == "kr.mission-driven.remote-task"
+    assert parsed["Label"] == "kr.mission-driven.remotask"
     calls = _read_calls(tmp_xdg_env)
     assert calls["load"], "launchctl load was not invoked"
 
@@ -73,8 +73,8 @@ def test_uninstall_preserves_user_data(
     assert plist.exists()
     cli_runner("uninstall", extra_env=stub_env)
     assert not plist.exists()
-    config_path = tmp_xdg_env / "config" / "remote-task" / "config.toml"
-    db_path = tmp_xdg_env / "data" / "remote-task" / "state.db"
+    config_path = tmp_xdg_env / "config" / "remotask" / "config.toml"
+    db_path = tmp_xdg_env / "data" / "remotask" / "state.db"
     assert config_path.exists()
     assert db_path.exists()
     calls = _read_calls(tmp_xdg_env)
@@ -87,8 +87,8 @@ def test_uninstall_purge_removes_data(
     cli_runner("init", extra_env=stub_env)
     cli_runner("install", extra_env=stub_env)
     cli_runner("uninstall", "--purge", extra_env=stub_env)
-    config_path = tmp_xdg_env / "config" / "remote-task"
-    data_path = tmp_xdg_env / "data" / "remote-task"
+    config_path = tmp_xdg_env / "config" / "remotask"
+    data_path = tmp_xdg_env / "data" / "remotask"
     assert not config_path.exists()
     assert not data_path.exists()
 
