@@ -1,0 +1,46 @@
+# spec-kit / claude credentials
+.claude/.credentials*
+.claude/auth*
+.claude/session*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.env
+.env.local
+
+# uv
+.uv-cache/
+
+# Build
+dist/
+build/
+*.egg
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Local data (XDG paths are outside project, but safety net)
+data/
+logs/
+*.db
+*.db-wal
+*.db-shm
+*.pid
+*.sock
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml

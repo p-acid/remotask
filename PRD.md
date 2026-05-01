@@ -50,8 +50,31 @@
 - 멀티 사용자/팀 단위 권한 모델, 조직 관리 기능.
 - 클라우드 호스팅·SaaS 형태 배포(1인 셀프 호스트 전제).
 - 코드 머지 자동화(머지는 사용자가 GitHub 앱으로 수행).
-- 데스크탑 네이티브 앱(Phase 3 이후 옵션으로 검토).
+- 데스크탑 네이티브 앱(Phase 5 이후 옵션으로 검토).
 - iOS/Android 네이티브 클라이언트(Telegram + 모바일 브라우저로 충분).
+
+### MVP 스코프 (★ 중요)
+**MVP는 웹 GUI를 포함하지 않는다.** Telegram 트리거 + 데몬 + Agent SDK + Draft PR 생성까지가 MVP.
+
+| 영역 | MVP 포함 여부 |
+|---|---|
+| Telegram bot (long-poll, forum topic, 화이트리스트) | ✅ MVP |
+| 세션 라이프사이클 (단일 동시 세션) | ✅ MVP |
+| Claude Agent SDK 실행 (`/work-start` → `/work-done`) | ✅ MVP |
+| `git worktree` 격리 + Draft PR 자동 생성 | ✅ MVP |
+| typer CLI (init, install, daemon start/stop/status, sessions list, projects add/list) | ✅ MVP |
+| launchd 등록 / 부팅 자동 시작 | ✅ MVP |
+| 프로젝트 매핑 (config.toml seed + DB) | ✅ MVP (CRUD는 CLI만) |
+| SQLite 스키마 (sessions, projects, session_events, locks) | ✅ MVP |
+| FastAPI HTTP API | ⛔ Post-MVP (Phase 2) |
+| WebSocket 이벤트 스트림 | ⛔ Post-MVP (Phase 2) |
+| React 웹 GUI | ⛔ Post-MVP (Phase 2) |
+| Monaco 스킬 에디터 | ⛔ Post-MVP (Phase 2) |
+| 폴더 트리 피커 | ⛔ Post-MVP (Phase 2) |
+| 다중 동시 세션 (`max_concurrent ≥ 2`) | ⛔ Post-MVP (Phase 3) |
+| 양방향 인터랙션 (Telegram → SDK stdin) | ⛔ Post-MVP (Phase 3) |
+| Tailscale·외부 노출 | ⛔ Post-MVP (Phase 4) |
+| Tauri 데스크탑 셸 | ⛔ Post-MVP (Phase 5) |
 
 ---
 
@@ -196,7 +219,9 @@
 - 웹 UI에서 CRUD 가능(`projects` 테이블).
 - 매핑 없는 issue key는 거부 + Telegram에 안내.
 
-### 5.7 웹 GUI
+### 5.7 웹 GUI ⛔ Post-MVP (Phase 2)
+> MVP에 포함되지 않음. 모니터링·관리는 MVP에서 CLI(`remote-task sessions list` 등) + Telegram 알림으로 대체한다.
+
 - **Dashboard**: 활성 세션, 큐 대기, 오늘 완료/실패, daemon 헬스.
 - **Session Detail**: 메타 정보, turn-by-turn 로그(스트리밍), hook 이벤트 타임라인, worktree 경로, cancel 버튼.
 - **Projects**: Jira key ↔ repo 매핑 CRUD, 폴더 트리 피커, base branch 설정.
@@ -268,7 +293,9 @@ remote-task projects add <jira-key> <repo-path>
 - **GitPython** 또는 subprocess git — worktree 조작
 - **structlog** — 구조화 로깅
 
-### 프론트엔드 (web)
+### 프론트엔드 (web) ⛔ Post-MVP (Phase 2)
+> MVP에서는 사용하지 않는다.
+
 - **React 19 + Vite + TypeScript**
 - **TanStack Query** — 서버 상태 관리
 - **Tailwind CSS + shadcn/ui** — UI 컴포넌트
@@ -529,12 +556,14 @@ WS  /ws/events
 
 ## 12. 단계별 로드맵
 
-### Phase 0 — 인프라 셋업 (0.5일)
-- 디렉토리·`pyproject.toml`·`tsconfig.json` 골격
+### Phase 0 — 인프라 셋업 (0.5일) ✅ MVP
+- 디렉토리·`pyproject.toml` 골격 (Python 전용, 프론트 X)
 - typer CLI 진입점 (모든 서브커맨드 빈 함수로)
 - `init` / `install` / `daemon run-foreground` 최소 동작
+- SQLite 스키마 + 마이그레이션
+- spec-kit 기반 스펙 관리(`/speckit-*` 명령으로 진행)
 
-### Phase 1 — Telegram 트리거 + Agent SDK 실행 (3~4일)
+### Phase 1 — Telegram 트리거 + Agent SDK 실행 (3~4일) ✅ MVP
 - Telegram bot long-poll, 화이트리스트 인증
 - Forum topic 자동 생성
 - 메시지 → issue key 추출 → 세션 시작
@@ -542,7 +571,10 @@ WS  /ws/events
 - `/work-start <key>` → `/work-done` 호출 흐름
 - Draft PR 생성, Telegram에 PR 링크 회신
 - **동시 실행 1개로 시작**(`max_concurrent=1`)
+- 프로젝트 매핑은 config.toml + CLI(`projects add/list`)로만 관리
 - launchd 등록, 부팅 시 자동 시작
+
+> **🎯 여기까지가 MVP 완료 지점.** 이후 Phase는 MVP 가치 검증 후 점진적으로 추가.
 
 ### Phase 2 — 웹 GUI (4~5일)
 - FastAPI HTTP/WebSocket 서버 daemon 임베드
@@ -597,6 +629,8 @@ WS  /ws/events
 | D14 | IPC를 Unix socket 대신 HTTP로 통일 | CLI·웹 UI·Telegram 봇이 동일 API 사용 → 추상화 한 단 |
 | D15 | daemon과 GUI 프로세스 분리 | GUI 닫혀도 트리거 처리 지속 |
 | D16 | 동시 실행은 Phase 3로 미룸(Phase 1은 1개로 시작) | 큐·락·격리를 충분히 검증 후 확장 |
+| D17 | MVP에서 웹 GUI 제외 | 핵심 가치(원격 트리거)를 먼저 검증. 모니터링은 CLI + Telegram으로 충분 |
+| D18 | spec-kit(speckit) 도입, `/speckit-*` 명령으로 스펙 주도 개발 | PRD → spec → plan → tasks → implement 흐름 표준화, AI 협업 친화적 |
 
 ---
 
