@@ -11,12 +11,12 @@ from pathlib import Path
 
 import typer
 
-from remote_task.core import lifecycle, paths
-from remote_task.daemon import stub_runtime
+from remotask.core import lifecycle, paths
+from remotask.daemon import stub_runtime
 
 app = typer.Typer(
     name="daemon",
-    help="Manage the remote-task daemon process (run-foreground/start/stop/status/logs).",
+    help="Manage the remotask daemon process (run-foreground/start/stop/status/logs).",
     no_args_is_help=True,
 )
 
@@ -51,7 +51,7 @@ def start() -> None:
 
     with out_path.open("ab") as out_fd, err_path.open("ab") as err_fd:
         subprocess.Popen(
-            [sys.executable, "-m", "remote_task", "daemon", "run-foreground"],
+            [sys.executable, "-m", "remotask", "daemon", "run-foreground"],
             stdout=out_fd,
             stderr=err_fd,
             stdin=subprocess.DEVNULL,
@@ -117,7 +117,7 @@ def status() -> None:
     if not running or pid is None:
         typer.echo("status: not running")
         raise typer.Exit(code=1)
-    log_path = paths.log_dir() / "remote-task.log"
+    log_path = paths.log_dir() / "remotask.log"
     uptime = _format_uptime(_pid_uptime_seconds(pid_path))
     typer.echo("status: running")
     typer.echo(f"pid: {pid}")
@@ -128,7 +128,7 @@ def status() -> None:
 @app.command("logs")
 def logs(follow: bool = typer.Option(False, "-f", "--follow")) -> None:
     """Tail daemon logs."""
-    log_path = paths.log_dir() / "remote-task.log"
+    log_path = paths.log_dir() / "remotask.log"
     if not log_path.exists():
         typer.echo("(no logs yet)")
         return

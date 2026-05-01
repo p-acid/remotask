@@ -5,8 +5,8 @@ import os
 
 import structlog
 
-from remote_task.core import lifecycle, paths
-from remote_task.core import logging as rt_logging
+from remotask.core import lifecycle, paths
+from remotask.core import logging as rt_logging
 
 
 def run() -> None:

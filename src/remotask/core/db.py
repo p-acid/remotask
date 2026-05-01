@@ -7,7 +7,7 @@ import time
 from importlib import resources
 from pathlib import Path
 
-_MIGRATION_PKG = "remote_task.migrations"
+_MIGRATION_PKG = "remotask.migrations"
 _MIGRATION_FILENAME_RE = re.compile(r"^V(\d{4})__([A-Za-z0-9_]+)\.sql$")
 
 

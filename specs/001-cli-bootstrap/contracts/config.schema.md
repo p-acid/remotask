@@ -3,11 +3,11 @@
 **Feature**: 001-cli-bootstrap
 **Date**: 2026-05-01
 
-`config.toml`은 사용자가 직접 편집하거나 `remote-task config` 명령으로 조작하는 외부 인터페이스다.
+`config.toml`은 사용자가 직접 편집하거나 `remotask config` 명령으로 조작하는 외부 인터페이스다.
 
 ## 0. 위치·권한
 
-- 경로: `$XDG_CONFIG_HOME/remote-task/config.toml` (기본 `~/.config/remote-task/config.toml`)
+- 경로: `$XDG_CONFIG_HOME/remotask/config.toml` (기본 `~/.config/remotask/config.toml`)
 - 권한: `0600` 강제 (init 시 검증, 매 read 시 경고)
 - 인코딩: UTF-8
 
@@ -114,7 +114,7 @@ CLI는 dotted-path로 키를 표현한다:
 list 타입 `set` UX:
 
 ```
-$ remote-task config set telegram.allowed_user_ids 12345,67890
+$ remotask config set telegram.allowed_user_ids 12345,67890
 ✓ telegram.allowed_user_ids = [12345, 67890]
 ```
 
@@ -123,7 +123,7 @@ $ remote-task config set telegram.allowed_user_ids 12345,67890
 후속 단계에서 시크릿을 macOS Keychain으로 옮길 수 있도록 reader가 다음 패턴을 인식한다:
 
 ```toml
-bot_token = "@keychain:remote-task.bot_token"
+bot_token = "@keychain:remotask.bot_token"
 ```
 
 본 feature에서는 reader에 자리만 만들고 실제 Keychain 호출은 Phase 4. 인식되었으나 Keychain 미통합 상태에서 호출되면 명확한 오류로 응답한다.

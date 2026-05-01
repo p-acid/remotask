@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from remote_task.core import config
+from remotask.core import config
 
 
 def _bootstrap(path: Path) -> config.ConfigSchema:

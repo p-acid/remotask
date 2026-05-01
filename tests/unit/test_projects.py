@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from remote_task.core import projects
+from remotask.core import projects
 
 
 def _make_git_repo(p: Path) -> Path:
@@ -63,7 +63,7 @@ def test_repo_path_validator_rejects_non_git(tmp_path: Path) -> None:
 
 
 def test_add_and_list_round_trip(tmp_path: Path) -> None:
-    from remote_task.core import db
+    from remotask.core import db
     repo = _make_git_repo(tmp_path / "repo")
     conn = db.connect(tmp_path / "state.db")
     projects.add(conn, "ZXTL", str(repo), "main")
@@ -75,7 +75,7 @@ def test_add_and_list_round_trip(tmp_path: Path) -> None:
 
 
 def test_add_duplicate_rejected(tmp_path: Path) -> None:
-    from remote_task.core import db
+    from remotask.core import db
     repo = _make_git_repo(tmp_path / "repo")
     conn = db.connect(tmp_path / "state.db")
     projects.add(conn, "ZXTL", str(repo), "main")
@@ -84,7 +84,7 @@ def test_add_duplicate_rejected(tmp_path: Path) -> None:
 
 
 def test_remove_existing(tmp_path: Path) -> None:
-    from remote_task.core import db
+    from remotask.core import db
     repo = _make_git_repo(tmp_path / "repo")
     conn = db.connect(tmp_path / "state.db")
     projects.add(conn, "ZXTL", str(repo), "main")
@@ -93,7 +93,7 @@ def test_remove_existing(tmp_path: Path) -> None:
 
 
 def test_remove_unknown_raises(tmp_path: Path) -> None:
-    from remote_task.core import db
+    from remotask.core import db
     conn = db.connect(tmp_path / "state.db")
     with pytest.raises(projects.UnknownKeyError):
         projects.remove(conn, "ZXTL")

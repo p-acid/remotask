@@ -5,9 +5,9 @@ import shutil
 
 import typer
 
-from remote_task.core import logging as rt_logging
-from remote_task.core import paths
-from remote_task.platform import macos_launchd
+from remotask.core import logging as rt_logging
+from remotask.core import paths
+from remotask.platform import macos_launchd
 
 app = typer.Typer(
     name="uninstall",

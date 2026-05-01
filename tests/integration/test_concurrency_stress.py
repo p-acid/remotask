@@ -18,7 +18,7 @@ CONCURRENCY_REPS = int(os.environ.get("STRESS_REPS", "100"))
 
 def _spawn_init(env: dict[str, str]) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, "-m", "remote_task", "init"],
+        [sys.executable, "-m", "remotask", "init"],
         env=env,
         capture_output=True,
         text=True,
@@ -46,8 +46,8 @@ def test_init_concurrent_repeats(tmp_xdg_env: Path) -> None:
             else:
                 failures.append(r.stderr or r.stdout)
 
-    config_path = tmp_xdg_env / "config" / "remote-task" / "config.toml"
-    db_path = tmp_xdg_env / "data" / "remote-task" / "state.db"
+    config_path = tmp_xdg_env / "config" / "remotask" / "config.toml"
+    db_path = tmp_xdg_env / "data" / "remotask" / "state.db"
     assert config_path.exists()
     assert db_path.exists()
     # config still parseable
@@ -75,7 +75,7 @@ def test_daemon_concurrent_spawn(tmp_xdg_env: Path, cli_runner) -> None:
         for _ in range(8):
             procs.append(
                 subprocess.Popen(
-                    [sys.executable, "-m", "remote_task", "daemon", "run-foreground"],
+                    [sys.executable, "-m", "remotask", "daemon", "run-foreground"],
                     env=env,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
@@ -90,7 +90,7 @@ def test_daemon_concurrent_spawn(tmp_xdg_env: Path, cli_runner) -> None:
             f"{len(procs) - len(alive)} exited"
         )
         # Survivor must own the PID file.
-        pid_path = tmp_xdg_env / "data" / "remote-task" / "daemon.pid"
+        pid_path = tmp_xdg_env / "data" / "remotask" / "daemon.pid"
         assert pid_path.exists()
         assert int(pid_path.read_text().strip()) == alive[0].pid
     finally:

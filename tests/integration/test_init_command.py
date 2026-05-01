@@ -12,9 +12,9 @@ def _read_config(p: Path) -> dict:
 
 def test_init_creates_all_artifacts(cli_runner, tmp_xdg_env: Path) -> None:
     cli_runner("init")
-    config_path = tmp_xdg_env / "config" / "remote-task" / "config.toml"
-    db_path = tmp_xdg_env / "data" / "remote-task" / "state.db"
-    log_dir = tmp_xdg_env / "data" / "remote-task" / "logs"
+    config_path = tmp_xdg_env / "config" / "remotask" / "config.toml"
+    db_path = tmp_xdg_env / "data" / "remotask" / "state.db"
+    log_dir = tmp_xdg_env / "data" / "remotask" / "logs"
     assert config_path.exists()
     assert db_path.exists()
     assert log_dir.is_dir()
@@ -22,14 +22,14 @@ def test_init_creates_all_artifacts(cli_runner, tmp_xdg_env: Path) -> None:
 
 def test_init_config_permission_0600(cli_runner, tmp_xdg_env: Path) -> None:
     cli_runner("init")
-    config_path = tmp_xdg_env / "config" / "remote-task" / "config.toml"
+    config_path = tmp_xdg_env / "config" / "remotask" / "config.toml"
     mode = config_path.stat().st_mode & 0o777
     assert mode == 0o600
 
 
 def test_init_db_schema_v1(cli_runner, tmp_xdg_env: Path) -> None:
     cli_runner("init")
-    db_path = tmp_xdg_env / "data" / "remote-task" / "state.db"
+    db_path = tmp_xdg_env / "data" / "remotask" / "state.db"
     conn = sqlite3.connect(db_path)
     try:
         tables = {
@@ -46,7 +46,7 @@ def test_init_db_schema_v1(cli_runner, tmp_xdg_env: Path) -> None:
 
 def test_init_generates_auth_token(cli_runner, tmp_xdg_env: Path) -> None:
     cli_runner("init")
-    config_path = tmp_xdg_env / "config" / "remote-task" / "config.toml"
+    config_path = tmp_xdg_env / "config" / "remotask" / "config.toml"
     cfg = _read_config(config_path)
     token = cfg["daemon"]["auth_token"]
     assert isinstance(token, str)
@@ -55,7 +55,7 @@ def test_init_generates_auth_token(cli_runner, tmp_xdg_env: Path) -> None:
 
 def test_init_idempotent(cli_runner, tmp_xdg_env: Path) -> None:
     cli_runner("init")
-    config_path = tmp_xdg_env / "config" / "remote-task" / "config.toml"
+    config_path = tmp_xdg_env / "config" / "remotask" / "config.toml"
     first_token = _read_config(config_path)["daemon"]["auth_token"]
     first_mtime = config_path.stat().st_mtime_ns
 
@@ -72,8 +72,8 @@ def test_init_force_overwrites_config_preserves_db(
     cli_runner, tmp_xdg_env: Path
 ) -> None:
     cli_runner("init")
-    db_path = tmp_xdg_env / "data" / "remote-task" / "state.db"
-    config_path = tmp_xdg_env / "config" / "remote-task" / "config.toml"
+    db_path = tmp_xdg_env / "data" / "remotask" / "state.db"
+    config_path = tmp_xdg_env / "config" / "remotask" / "config.toml"
     first_token = _read_config(config_path)["daemon"]["auth_token"]
 
     # Insert a project row to verify DB preservation.

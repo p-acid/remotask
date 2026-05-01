@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from remote_task.core import lifecycle
+from remotask.core import lifecycle
 
 
 def test_acquire_writes_pid(tmp_path: Path) -> None:

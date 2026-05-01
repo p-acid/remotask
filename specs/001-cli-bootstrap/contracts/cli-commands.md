@@ -3,7 +3,7 @@
 **Feature**: 001-cli-bootstrap
 **Date**: 2026-05-01
 
-> 본 문서는 `remote-task` CLI의 명령어 표면을 계약으로 정의한다.
+> 본 문서는 `remotask` CLI의 명령어 표면을 계약으로 정의한다.
 > 명령은 사용자에게 노출되는 외부 인터페이스이므로 변경에는 헌법(거버넌스 절차)이 적용된다.
 
 ## 0. 종료 코드 컨벤션
@@ -21,13 +21,13 @@
 ## 1. 전역 옵션
 
 ```
-remote-task [OPTIONS] COMMAND [ARGS]...
+remotask [OPTIONS] COMMAND [ARGS]...
 
 Options:
   --version              버전 정보 출력 후 종료
   --verbose, -v          DEBUG 레벨 로그 활성
   --no-color             컬러 비활성 (CI/파이프 환경)
-  --config PATH          config.toml 경로 override (기본: $XDG_CONFIG_HOME/remote-task/config.toml)
+  --config PATH          config.toml 경로 override (기본: $XDG_CONFIG_HOME/remotask/config.toml)
   --help                 도움말
 ```
 
@@ -49,7 +49,7 @@ Options:
 ## 3. `init` — 환경 부트스트랩
 
 ```
-remote-task init [OPTIONS]
+remotask init [OPTIONS]
 
 Options:
   --force                기존 config.toml 덮어쓰기 (DB 사용자 데이터는 보존)
@@ -62,7 +62,7 @@ Exit codes:
 ```
 
 **Effect**:
-1. `$XDG_CONFIG_HOME/remote-task/`, `$XDG_DATA_HOME/remote-task/{logs}` 생성
+1. `$XDG_CONFIG_HOME/remotask/`, `$XDG_DATA_HOME/remotask/{logs}` 생성
 2. `config.toml`을 기본값 + 자동 생성된 토큰으로 작성 (권한 0600)
 3. `state.db` 생성 + V0001 마이그레이션 적용
 4. 산출물 경로를 사용자에게 표시
@@ -76,10 +76,10 @@ Exit codes:
 ## 4. `install` — launchd 등록
 
 ```
-remote-task install [OPTIONS]
+remotask install [OPTIONS]
 
 Options:
-  --label TEXT           plist Label override (기본: kr.mission-driven.remote-task)
+  --label TEXT           plist Label override (기본: kr.mission-driven.remotask)
   --interpreter PATH     Python 인터프리터 경로 override (기본: 자동 감지)
   --force                기존 plist 덮어쓰기 (확인 prompt 생략)
 
@@ -105,7 +105,7 @@ Exit codes:
 ## 5. `uninstall` — launchd 해제
 
 ```
-remote-task uninstall [OPTIONS]
+remotask uninstall [OPTIONS]
 
 Options:
   --label TEXT           plist Label override
@@ -119,7 +119,7 @@ Exit codes:
 **Effect**:
 1. `launchctl unload -w <plist>` 실행 (이미 unload돼 있으면 무시)
 2. `<plist>` 파일 삭제
-3. `--purge` 시: `$XDG_CONFIG_HOME/remote-task/`, `$XDG_DATA_HOME/remote-task/` 삭제
+3. `--purge` 시: `$XDG_CONFIG_HOME/remotask/`, `$XDG_DATA_HOME/remotask/` 삭제
 
 **Default behavior**: 사용자 데이터 보존 (FR-043). `--purge`만 완전 삭제.
 
@@ -128,7 +128,7 @@ Exit codes:
 ## 6. `daemon` — 라이프사이클 (stub)
 
 ```
-remote-task daemon SUBCOMMAND
+remotask daemon SUBCOMMAND
 ```
 
 | 서브 | 설명 |
@@ -140,27 +140,27 @@ remote-task daemon SUBCOMMAND
 | `logs [-f]` | 데몬 로그 tail (`-f`로 follow) |
 
 ```
-remote-task daemon run-foreground
+remotask daemon run-foreground
 
 Exit codes:
   0  정상 종료 (SIGTERM 수신)
   4  락 충돌 (이미 실행 중)
   5  PID 파일 쓰기 실패
 
-remote-task daemon start
+remotask daemon start
 
 Exit codes:
   0  spawn 성공 (PID 표시)
   4  이미 실행 중
 
-remote-task daemon stop
+remotask daemon stop
 
 Exit codes:
   0  종료 완료
   1  데몬이 실행 중이 아님 (사용자에게 안내)
   6  종료 실패 (5초 + SIGKILL 후에도)
 
-remote-task daemon status
+remotask daemon status
 
 Exit codes:
   0  실행 중
@@ -170,7 +170,7 @@ Output (running):
   status: running
   pid: 12345
   uptime: 1h 23m 45s
-  log: /Users/samuel/.local/share/remote-task/logs/daemon.log
+  log: /Users/samuel/.local/share/remotask/logs/daemon.log
 
 Output (not running):
   status: not running
@@ -183,10 +183,10 @@ Output (not running):
 ## 7. `config` — 설정 조회·변경
 
 ```
-remote-task config get <key> [--reveal]
-remote-task config set <key> <value>
-remote-task config list [--reveal]
-remote-task config regenerate-token [--name TEXT]
+remotask config get <key> [--reveal]
+remotask config set <key> <value>
+remotask config list [--reveal]
+remotask config regenerate-token [--name TEXT]
 ```
 
 | 서브 | 설명 |
@@ -204,13 +204,13 @@ remote-task config regenerate-token [--name TEXT]
 **Examples**:
 
 ```
-$ remote-task config get agent.max_concurrent
+$ remotask config get agent.max_concurrent
 1
-$ remote-task config set agent.max_concurrent 2
+$ remotask config set agent.max_concurrent 2
 ✓ agent.max_concurrent = 2
-$ remote-task config get telegram.bot_token
+$ remotask config get telegram.bot_token
 ****8h2k
-$ remote-task config get telegram.bot_token --reveal
+$ remotask config get telegram.bot_token --reveal
 1234567890:ABCDEFGHIJKLMNOPQRSTUVWXYZ12345678h2k
 ```
 
@@ -219,7 +219,7 @@ $ remote-task config get telegram.bot_token --reveal
 ## 8. `login` — (stub)
 
 ```
-remote-task login
+remotask login
 
 본 feature에서는 stub. "이 명령은 002-telegram-trigger feature에서 구현됩니다." 메시지 후 종료 코드 0.
 ```
@@ -229,8 +229,8 @@ remote-task login
 ## 9. `sessions` — (stub)
 
 ```
-remote-task sessions list
-remote-task sessions cancel <issue-key>
+remotask sessions list
+remotask sessions cancel <issue-key>
 
 list: 현재 DB의 sessions 테이블을 단순 select로 표시. 본 feature에서는 항상 "no sessions yet" 출력.
 cancel: 본 feature에서는 stub. "이 명령은 003-agent-execution feature에서 구현됩니다." 후 종료 코드 0.
@@ -241,9 +241,9 @@ cancel: 본 feature에서는 stub. "이 명령은 003-agent-execution feature에
 ## 10. `projects` — CRUD 자리
 
 ```
-remote-task projects list
-remote-task projects add <jira-key> <repo-path> [--branch TEXT]
-remote-task projects remove <jira-key>
+remotask projects list
+remotask projects add <jira-key> <repo-path> [--branch TEXT]
+remotask projects remove <jira-key>
 ```
 
 본 feature에서는 DB CRUD까지 동작한다(후속 feature가 즉시 사용할 수 있도록). UI(폴더 트리 피커)는 Phase 2.

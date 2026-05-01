@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import typer
 
-from remote_task.core import db as rt_db
-from remote_task.core import paths
-from remote_task.core import projects as rt_projects
+from remotask.core import db as rt_db
+from remotask.core import paths
+from remotask.core import projects as rt_projects
 
 app = typer.Typer(
     name="projects",
@@ -17,7 +17,7 @@ app = typer.Typer(
 def _ensure_initialized() -> None:
     if not paths.config_path().exists():
         typer.secho(
-            "remote-task is not initialized. Run `remote-task init` first.",
+            "remotask is not initialized. Run `remotask init` first.",
             fg=typer.colors.RED,
             err=True,
         )

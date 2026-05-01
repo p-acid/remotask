@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import structlog
 
-from remote_task.core import logging as rt_logging
+from remotask.core import logging as rt_logging
 
 
 def test_setup_logging_returns_structlog_bound_logger(tmp_path: Path) -> None:
@@ -28,7 +28,7 @@ def test_log_writes_json_lines_to_file(tmp_path: Path) -> None:
     # flush handlers
     for h in logging.getLogger().handlers:
         h.flush()
-    log_file = tmp_path / "remote-task.log"
+    log_file = tmp_path / "remotask.log"
     assert log_file.exists()
     line = log_file.read_text().strip().splitlines()[-1]
     payload = json.loads(line)
@@ -41,7 +41,7 @@ def test_audit_logger_uses_separate_file(tmp_path: Path) -> None:
     rt_logging.setup_logging(level="INFO", log_dir=tmp_path, force_json=True)
     audit = rt_logging.audit_logger()
     audit.info("token.regenerated", name="daemon")
-    for h in logging.getLogger("remote_task.audit").handlers:
+    for h in logging.getLogger("remotask.audit").handlers:
         h.flush()
     audit_file = tmp_path / "audit.log"
     assert audit_file.exists()
@@ -66,5 +66,5 @@ def test_force_json_overrides_tty_detection(tmp_path: Path, monkeypatch: pytest.
     log.info("event_z", n=2)
     for h in logging.getLogger().handlers:
         h.flush()
-    line = (tmp_path / "remote-task.log").read_text().strip().splitlines()[-1]
+    line = (tmp_path / "remotask.log").read_text().strip().splitlines()[-1]
     assert json.loads(line)["event"] == "event_z"

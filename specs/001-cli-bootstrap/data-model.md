@@ -10,7 +10,7 @@
 
 ## 1. 마이그레이션 정책
 
-- 디렉토리: `src/remote_task/migrations/`
+- 디렉토리: `src/remotask/migrations/`
 - 파일명: `V<seq>__<slug>.sql` (4자리 zero-pad)
 - 적용 시점: `core/db.py::connect()` 호출 시 자동
 - 트랜잭션: 각 파일은 단일 트랜잭션으로 적용

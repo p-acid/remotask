@@ -10,9 +10,9 @@ from pathlib import Path
 
 from jinja2 import Environment
 
-DEFAULT_LABEL = "kr.mission-driven.remote-task"
+DEFAULT_LABEL = "kr.mission-driven.remotask"
 _LABEL_RE = re.compile(r"^[a-zA-Z0-9._\-]+$")
-_TEMPLATE_PKG = "remote_task"  # bundled via hatch.force-include
+_TEMPLATE_PKG = "remotask"  # bundled via hatch.force-include
 
 
 def validate_label(label: str) -> None:
@@ -46,20 +46,20 @@ def detect_environment() -> dict[str, str]:
 
 
 def _load_template_text() -> str:
-    pkg = resources.files("remote_task.templates")  # type: ignore[arg-type]
+    pkg = resources.files("remotask.templates")  # type: ignore[arg-type]
     return (pkg / "launchd.plist.j2").read_text(encoding="utf-8")
 
 
-def render_plist(*, label: str, remote_task_path: str, env: dict[str, str]) -> str:
+def render_plist(*, label: str, remotask_path: str, env: dict[str, str]) -> str:
     validate_label(label)
     home = env.get("HOME", str(Path.home()))
-    data_dir = env.get("XDG_DATA_HOME", str(Path(home) / ".local" / "share")) + "/remote-task"
+    data_dir = env.get("XDG_DATA_HOME", str(Path(home) / ".local" / "share")) + "/remotask"
     template_text = _load_template_text()
     j_env = Environment(autoescape=False)  # plist values escaped manually if needed
     template = j_env.from_string(template_text)
     return template.render(
         label=label,
-        remote_task_path=remote_task_path,
+        remotask_path=remotask_path,
         home=home,
         data_dir=data_dir,
         env=env,

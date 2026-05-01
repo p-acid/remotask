@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from remote_task.core import secrets as rt_secrets
+from remotask.core import secrets as rt_secrets
 
 
 def test_generate_token_minimum_length() -> None:

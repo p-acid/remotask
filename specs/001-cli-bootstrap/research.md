@@ -27,7 +27,7 @@
 ## R2. SQLite 마이그레이션 패턴
 
 **Decision**: 자체 간이 마이그레이션 러너(파일명 정렬 기반).
-- 디렉토리: `src/remote_task/migrations/`
+- 디렉토리: `src/remotask/migrations/`
 - 파일명 규칙: `V<seq>__<slug>.sql` (예: `V0001__init.sql`)
 - 적용 시점: `db.connect()` 호출 시 `schema_version`을 읽어 미적용 분만 트랜잭션으로 실행.
 - 다운그레이드 미지원 (전진 전용).
@@ -49,12 +49,12 @@
 ## R3. macOS launchd plist 스펙
 
 **Decision**: User-level Launch Agent (`~/Library/LaunchAgents/`)를 사용. 필수 키:
-- `Label`: `kr.mission-driven.remote-task` (역방향 도메인)
-- `ProgramArguments`: `[<remote-task 절대경로>, "daemon", "run-foreground"]`
+- `Label`: `kr.mission-driven.remotask` (역방향 도메인)
+- `ProgramArguments`: `[<remotask 절대경로>, "daemon", "run-foreground"]`
 - `RunAtLoad`: `true`
 - `KeepAlive`: `{ "SuccessfulExit": false, "Crashed": true }` (정상 종료엔 재시작 안 함, 크래시엔 재시작)
 - `EnvironmentVariables`: `PATH`, `HOME`, `LANG`, `XDG_*` (사용자 환경에서 자동 감지·하드코딩)
-- `StandardOutPath` / `StandardErrorPath`: `~/.local/share/remote-task/logs/launchd.{out,err}.log`
+- `StandardOutPath` / `StandardErrorPath`: `~/.local/share/remotask/logs/launchd.{out,err}.log`
 - `WorkingDirectory`: `$HOME`
 - `ThrottleInterval`: `10` (재시작 최소 간격, 무한 루프 방지)
 
@@ -71,7 +71,7 @@
 
 ## R4. 단일 인스턴스 보장: PID 파일 + flock
 
-**Decision**: `~/.local/share/remote-task/daemon.pid` 파일을 `fcntl.flock(LOCK_EX | LOCK_NB)`로 잠근다.
+**Decision**: `~/.local/share/remotask/daemon.pid` 파일을 `fcntl.flock(LOCK_EX | LOCK_NB)`로 잠근다.
 - daemon 시작 시: PID 파일 열고 비차단 락 시도 → 실패하면 기존 인스턴스로 간주, `EBUSY` 종료.
 - PID 파일에 현재 PID 기록.
 - daemon 종료 시: 락 해제 + PID 파일 삭제.
@@ -115,9 +115,9 @@
 **Decision**:
 - **생성**: `secrets.token_urlsafe(32)` (256bit 이상 엔트로피).
 - **저장**: `config.toml` 안에 평문 + 파일 권한 `0600`.
-- **회전**: `remote-task config regenerate-token` 명령(이 feature가 자리만 마련, 실제 회전 로직은 동일).
+- **회전**: `remotask config regenerate-token` 명령(이 feature가 자리만 마련, 실제 회전 로직은 동일).
 - **마스킹**: 시크릿 분류 키(`telegram.bot_token`, `daemon.auth_token`)는 기본 `****<last4>` 표시. `--reveal` 플래그가 있을 때만 원문.
-- **Keychain**: Phase 4 옵션으로 미룸. `config.toml`에서 `bot_token = "@keychain:remote-task.bot_token"` 같은 referencing 문자열을 처음부터 인식할 수 있도록 reader에 hook 자리만 준비(실 호출은 후속).
+- **Keychain**: Phase 4 옵션으로 미룸. `config.toml`에서 `bot_token = "@keychain:remotask.bot_token"` 같은 referencing 문자열을 처음부터 인식할 수 있도록 reader에 hook 자리만 준비(실 호출은 후속).
 
 **Rationale**:
 - 1인용에서 권한 0600 파일은 충분히 안전. Keychain은 가치는 있으나 macOS 종속성 + 재인증 UX 부담.
@@ -153,7 +153,7 @@
 ## R8. CLI E2E 테스트 — subprocess 기반
 
 **Decision**:
-- pytest fixture에서 `subprocess.run([sys.executable, "-m", "remote_task", ...])`로 실제 진입점 호출.
+- pytest fixture에서 `subprocess.run([sys.executable, "-m", "remotask", ...])`로 실제 진입점 호출.
 - XDG 경로는 `monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))` 형태로 격리.
 - daemon 라이프사이클 테스트는 `subprocess.Popen`으로 백그라운드 spawn → status/stop 검증 후 정리.
 

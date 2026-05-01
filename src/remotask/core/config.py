@@ -10,7 +10,7 @@ from typing import Any, Literal
 import tomli_w
 from pydantic import BaseModel, Field, ValidationError
 
-from remote_task.core import secrets as rt_secrets
+from remotask.core import secrets as rt_secrets
 
 
 class ConfigError(Exception):

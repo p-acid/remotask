@@ -163,7 +163,7 @@
             ┌───────────┴───────────┐
             ▼                       ▼
      ┌────────────┐          ┌────────────┐
-     │ Browser    │          │ remote-task│
+     │ Browser    │          │ remotask│
      │ (Web UI)   │          │ CLI        │
      └────────────┘          └────────────┘
 ```
@@ -220,7 +220,7 @@
 - 매핑 없는 issue key는 거부 + Telegram에 안내.
 
 ### 5.7 웹 GUI ⛔ Post-MVP (Phase 2)
-> MVP에 포함되지 않음. 모니터링·관리는 MVP에서 CLI(`remote-task sessions list` 등) + Telegram 알림으로 대체한다.
+> MVP에 포함되지 않음. 모니터링·관리는 MVP에서 CLI(`remotask sessions list` 등) + Telegram 알림으로 대체한다.
 
 - **Dashboard**: 활성 세션, 큐 대기, 오늘 완료/실패, daemon 헬스.
 - **Session Detail**: 메타 정보, turn-by-turn 로그(스트리밍), hook 이벤트 타임라인, worktree 경로, cancel 버튼.
@@ -230,25 +230,25 @@
 
 ### 5.8 CLI 인터페이스
 ```
-remote-task init                  # 인터랙티브 설정 마법사
-remote-task install               # launchd plist 생성 + load
-remote-task uninstall
+remotask init                  # 인터랙티브 설정 마법사
+remotask install               # launchd plist 생성 + load
+remotask uninstall
 
-remote-task daemon start          # 데몬 시작(launchd로 위임)
-remote-task daemon stop
-remote-task daemon status
-remote-task daemon logs -f
-remote-task daemon run-foreground # launchd가 호출하는 진입점
+remotask daemon start          # 데몬 시작(launchd로 위임)
+remotask daemon stop
+remotask daemon status
+remotask daemon logs -f
+remotask daemon run-foreground # launchd가 호출하는 진입점
 
-remote-task config get|set <key> [value]
-remote-task login                 # Telegram 토큰·그룹 등록
-remote-task ui                    # 브라우저로 GUI 열기
+remotask config get|set <key> [value]
+remotask login                 # Telegram 토큰·그룹 등록
+remotask ui                    # 브라우저로 GUI 열기
 
-remote-task sessions list
-remote-task sessions cancel <issue-key>
+remotask sessions list
+remotask sessions cancel <issue-key>
 
-remote-task projects list
-remote-task projects add <jira-key> <repo-path>
+remotask projects list
+remotask projects add <jira-key> <repo-path>
 ```
 
 ---
@@ -274,7 +274,7 @@ remote-task projects add <jira-key> <repo-path>
 - `git push --force`, `rm -rf`, `git reset --hard` 등 위험 명령은 차단 목록.
 
 ### 6.4 관측성
-- 구조화 로깅(JSON lines), `~/.local/share/remote-task/logs/`.
+- 구조화 로깅(JSON lines), `~/.local/share/remotask/logs/`.
 - 세션별 로그 파일 분리.
 - 헬스체크 엔드포인트 `GET /api/health`.
 - 로그 로테이션(10MB × 5).
@@ -312,15 +312,15 @@ remote-task projects add <jira-key> <repo-path>
 ## 8. 디렉토리 구조
 
 ```
-remote-task/
+remotask/
 ├── pyproject.toml
-│   # [project.scripts] remote-task = "remote_task.cli:app"
+│   # [project.scripts] remotask = "remotask.cli:app"
 ├── README.md
 ├── .env.example
 ├── .gitignore
 ├── PRD.md                           ← 이 문서
 │
-├── src/remote_task/
+├── src/remotask/
 │   ├── __init__.py
 │   ├── cli.py                       ← typer app, 진입점
 │   ├── config.py                    ← TOML 로드, XDG 경로
@@ -403,11 +403,11 @@ remote-task/
 ### 사용자 데이터 위치 (XDG)
 
 ```
-~/.config/remote-task/config.toml             # 설정
-~/.local/share/remote-task/state.db           # SQLite
-~/.local/share/remote-task/logs/              # 세션 로그
-~/.local/share/remote-task/daemon.pid         # PID
-~/.cache/remote-task/                         # 캐시
+~/.config/remotask/config.toml             # 설정
+~/.local/share/remotask/state.db           # SQLite
+~/.local/share/remotask/logs/              # 세션 로그
+~/.local/share/remotask/daemon.pid         # PID
+~/.cache/remotask/                         # 캐시
 ```
 
 ---
