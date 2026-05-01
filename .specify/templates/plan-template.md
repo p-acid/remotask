@@ -31,7 +31,29 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+For each gate, mark `[x] PASS`, `[!] WAIVED` (with justification in Complexity Tracking),
+or `[ ] PENDING`. All gates must be PASS or WAIVED before implementation.
+
+- [ ] **I. Jira as Single Source of Truth**
+  - No new task/issue/workspace domain is introduced.
+  - Jira context is fetched, not duplicated to local persistent storage.
+- [ ] **II. Daemon-Centric Architecture**
+  - Business logic and privileged operations live in the daemon.
+  - All clients (CLI, Telegram bot, web) talk to the daemon via the HTTP API.
+- [ ] **III. Strict Session Isolation**
+  - Maintains 1 issue = 1 worktree = 1 branch = 1 Telegram topic mapping.
+  - Shared resources (lockfiles, migrations, package installs) are guarded by advisory locks.
+- [ ] **IV. MVP-First, Incremental Hardening**
+  - Change does not introduce out-of-phase features (e.g., web GUI, multi-session, external exposure during MVP).
+  - Phase entry criteria are met.
+- [ ] **V. Spec-Driven Development**
+  - This change has a spec; trivial-fix exception (< 30 min, ≤ 1 file) is documented if applied.
+- [ ] **VI. Security by Default**
+  - HTTP bindings, secret storage, allowlists, and command denylist are respected.
+  - Any opt-in to external exposure or denylist bypass is explicit and audited.
+- [ ] **VII. Observability & Auditability**
+  - Structured logging is preserved; new auditable actions are recorded in `session_events` or audit log.
+  - Health endpoint and log rotation are not regressed.
 
 ## Project Structure
 
