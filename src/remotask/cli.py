@@ -29,6 +29,9 @@ from remotask.commands import (
     sessions as sessions_cmd,
 )
 from remotask.commands import (
+    telegram as telegram_cmd,
+)
+from remotask.commands import (
     uninstall as uninstall_cmd,
 )
 
@@ -85,3 +88,4 @@ app.add_typer(config_cmd.app, name="config")
 app.add_typer(login_cmd.app, name="login")
 app.add_typer(sessions_cmd.app, name="sessions")
 app.add_typer(projects_cmd.app, name="projects")
+app.add_typer(telegram_cmd.app, name="telegram")

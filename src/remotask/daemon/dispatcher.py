@@ -1,0 +1,291 @@
+"""Inbound-message dispatcher.
+
+The listener calls ``dispatch(update, ctx)`` for every text update it sees in
+the configured chat. The dispatcher decides what to do with that message and
+either:
+
+- silently ignores it (no key match, or US2/US3 rejection paths),
+- replies in the main chat (US2/US6 rejection paths),
+- starts a session: insert row, acquire lock, create topic, spawn worker.
+
+This module focuses on the **accept path** (US1). The unknown-prefix branch
+(US2), unauthorised branch (US3), and same-issue / concurrency branches (US6)
+are filled in by their respective phases — they are present here as no-op
+``return`` stubs with TODO markers so the dispatcher's structure is clear from
+day one.
+"""
+from __future__ import annotations
+
+import sqlite3
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import structlog
+
+from remotask.core import config as rt_config
+from remotask.core import db as core_db
+from remotask.core import projects as rt_projects
+from remotask.daemon import audit, sessions, topic, worker
+from remotask.telegram.client import TelegramAPIError, TelegramClient
+from remotask.telegram.parser import extract_first_issue_key, split_prefix
+
+_log = structlog.get_logger().bind(component="dispatcher")
+
+
+@dataclass
+class DispatchContext:
+    """Everything the dispatcher needs that isn't a message-specific value."""
+
+    conn: sqlite3.Connection
+    client: TelegramClient
+    cfg: rt_config.ConfigSchema
+    # Hook for spawning the worker as a background task. The runtime supplies a
+    # function that registers the task in its task set so shutdown can wait on
+    # it. Tests pass a synchronous-ish version that awaits the worker inline.
+    spawn_worker_task: Callable[[Any], Any]
+    # Custom worker argv/env (for tests pointing at fake_agent). When None, the
+    # production claude-agent-sdk driver is used.
+    worker_argv: list[str] | None = None
+    worker_env: dict[str, str] | None = None
+
+
+async def dispatch(message: dict[str, Any], ctx: DispatchContext) -> None:
+    """Entry point for every inbound text message.
+
+    ``message`` is the raw Telegram message dict. We only need ``text``,
+    ``message_id``, ``from.id``, ``chat.id``.
+    """
+    text = message.get("text") or ""
+    sender = (message.get("from") or {}).get("id")
+    chat = (message.get("chat") or {}).get("id")
+    msg_id = message.get("message_id")
+
+    if sender is None or chat is None:
+        # Malformed update; nothing actionable.
+        return
+
+    # ---- whitelist gate (FR-002, FR-003) ---------------------------------
+    if sender not in ctx.cfg.telegram.allowed_user_ids:
+        # Silent rejection (no Telegram reply, no topic, no session row);
+        # the audit log captures sender + message + chat for later review.
+        audit.log_unbound_event(
+            audit.EV_TELEGRAM_UNAUTHORIZED,
+            {"sender_id": sender, "chat_id": chat, "message_id": msg_id},
+        )
+        return
+
+    # ---- parse issue key -------------------------------------------------
+    key = extract_first_issue_key(text)
+    if key is None:
+        # Casual chat / non-trigger: ignore entirely (FR-008).
+        return
+
+    prefix = split_prefix(key)
+    project = rt_projects.by_prefix(ctx.conn, prefix)
+    if project is None:
+        # Unknown prefix (FR-007). Reply in the main chat with the registered
+        # prefix list so the operator can correct a typo without leaving
+        # Telegram, and emit a non-session-bound audit entry.
+        registered = rt_projects.list_registered_prefixes(ctx.conn)
+        await topic.post_to_main_chat(
+            ctx.client,
+            chat_id=chat,
+            text=topic.TPL_UNKNOWN_PREFIX.format(
+                prefix=prefix,
+                prefixes=", ".join(registered) if registered else "(none)",
+            ),
+        )
+        audit.log_unbound_event(
+            audit.EV_TELEGRAM_UNKNOWN_PREFIX,
+            {
+                "prefix": prefix,
+                "key": key,
+                "registered_prefixes": registered,
+                "sender_id": sender,
+                "chat_id": chat,
+                "message_id": msg_id,
+            },
+        )
+        return
+
+    # ---- same-issue concurrency (FR-010 / US6) --------------------------
+    existing = core_db.get_active_session_for_issue(ctx.conn, key)
+    if existing is not None:
+        await topic.post_to_main_chat(
+            ctx.client,
+            chat_id=chat,
+            text=topic.TPL_ALREADY_IN_FLIGHT.format(
+                key=key, topic_id=existing["topic_id"] or 0
+            ),
+        )
+        audit.record_event(
+            ctx.conn,
+            session_id=existing["id"],
+            type=audit.EV_TELEGRAM_ALREADY_IN_FLIGHT,
+            payload={
+                "existing_session_id": existing["id"],
+                "existing_topic_id": existing["topic_id"],
+                "incoming_message_id": msg_id,
+                "incoming_sender_id": sender,
+            },
+        )
+        ctx.conn.commit()
+        return
+
+    # ---- max_concurrent cap (US6) ---------------------------------------
+    cap = ctx.cfg.agent.max_concurrent
+    if core_db.count_active_sessions(ctx.conn) >= cap:
+        await topic.post_to_main_chat(
+            ctx.client,
+            chat_id=chat,
+            text=topic.TPL_CONCURRENCY_CAP.format(cap=cap),
+        )
+        return
+
+    # ---- accept path (US1) ----------------------------------------------
+    await _accept_trigger(
+        message_text=text,
+        issue_key=key,
+        sender_id=sender,
+        chat_id=chat,
+        message_id=msg_id,
+        project=project,
+        ctx=ctx,
+    )
+
+
+async def _accept_trigger(
+    *,
+    message_text: str,
+    issue_key: str,
+    sender_id: int,
+    chat_id: int,
+    message_id: int | None,
+    project: rt_projects.ProjectRow,
+    ctx: DispatchContext,
+) -> None:
+    """Insert the session row + create the topic + hand off to the worker."""
+    log = _log.bind(issue_key=issue_key, sender_id=sender_id)
+    session_id = sessions.new_session_id()
+
+    # The same-issue / concurrency-cap branches (US6) wrap this insert. For US1
+    # we trust the caller to only invoke us when no active session exists.
+    try:
+        ctx.conn.execute("BEGIN IMMEDIATE")
+        sessions.insert_enqueued_session(
+            ctx.conn,
+            session_id=session_id,
+            issue_key=issue_key,
+            trigger_user=sender_id,
+            trigger_text=message_text,
+        )
+        sessions.acquire_issue_lock(
+            ctx.conn, issue_key=issue_key, session_id=session_id
+        )
+        ctx.conn.commit()
+    except Exception:
+        ctx.conn.rollback()
+        raise
+
+    audit.record_event(
+        ctx.conn,
+        session_id=session_id,
+        type=audit.EV_TELEGRAM_MESSAGE_RECEIVED,
+        payload={
+            "message_id": message_id,
+            "sender_id": sender_id,
+            "chat_id": chat_id,
+            "parsed_key": issue_key,
+        },
+    )
+    ctx.conn.commit()
+    log.info("dispatch.accepted", session_id=session_id)
+
+    # Create the forum topic. Failure is recoverable: mark session failed,
+    # post to main chat, audit-log the failure.
+    try:
+        forum = await topic.create_topic_for_session(
+            ctx.client, chat_id=chat_id, issue_key=issue_key
+        )
+    except TelegramAPIError as e:
+        audit.record_event(
+            ctx.conn,
+            session_id=session_id,
+            type=audit.EV_TELEGRAM_TOPIC_CREATE_FAILED,
+            payload={"error_code": e.error_code, "description": e.description},
+        )
+        sessions.transition(
+            ctx.conn,
+            session_id=session_id,
+            from_status="enqueued",
+            to_status="failed",
+            extra_columns={"error_message": f"createForumTopic: {e.description}"},
+        )
+        sessions.release_issue_lock(ctx.conn, issue_key=issue_key)
+        ctx.conn.commit()
+        await topic.post_to_main_chat(
+            ctx.client,
+            chat_id=chat_id,
+            text=topic.TPL_TOPIC_CREATE_FAILED.format(
+                key=issue_key, reason=e.description or "unknown error"
+            ),
+        )
+        return
+
+    sessions.set_topic_id(ctx.conn, session_id=session_id, topic_id=forum.message_thread_id)
+
+    # enqueued → starting (worktree creation about to begin in worker.run_worker)
+    sessions.transition(
+        ctx.conn,
+        session_id=session_id,
+        from_status="enqueued",
+        to_status="starting",
+    )
+
+    # Build worker spec.
+    worktree_root = worker.make_worktree_root(ctx.cfg.agent)
+    worktree_path_for_msg = worktree_root / issue_key
+    branch_for_msg = f"agent/{issue_key}"
+    spec = worker.WorkerSpec(
+        session_id=session_id,
+        issue_key=issue_key,
+        repo_path=Path(project["repo_path"]).expanduser(),
+        base_branch=project["base_branch"],
+        worktree_root=worktree_root,
+        argv=ctx.worker_argv,
+        extra_env=dict(ctx.worker_env or {}),
+        timeout_seconds=float(ctx.cfg.agent.session_timeout_seconds),
+    )
+
+    # Topic-bound "Session starting…" announcement (uses planned worktree
+    # path / branch; the worker emits "Status: running" once it actually moves
+    # the row to running).
+    await topic.post_to_topic(
+        ctx.client,
+        chat_id=chat_id,
+        topic_id=forum.message_thread_id,
+        text=topic.TPL_SESSION_STARTING.format(
+            key=issue_key,
+            worktree=str(worktree_path_for_msg),
+            branch=branch_for_msg,
+        ),
+    )
+    await sessions.post_status_to_topic(
+        ctx.client,
+        chat_id=chat_id,
+        topic_id=forum.message_thread_id,
+        new_status="starting",
+    )
+
+    # Hand off to the worker. The runtime registers this as a background task
+    # so its lifetime is tracked across shutdown.
+    coro = worker.run_worker(
+        spec,
+        conn=ctx.conn,
+        client=ctx.client,
+        chat_id=chat_id,
+        topic_id=forum.message_thread_id,
+    )
+    ctx.spawn_worker_task(coro)

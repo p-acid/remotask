@@ -12,7 +12,7 @@ from pathlib import Path
 import typer
 
 from remotask.core import lifecycle, paths
-from remotask.daemon import stub_runtime
+from remotask.daemon import runtime as daemon_runtime
 
 app = typer.Typer(
     name="daemon",
@@ -28,7 +28,7 @@ _POLL_INTERVAL = 0.05
 def run_foreground() -> None:
     """Run the daemon in the foreground (used by launchd)."""
     try:
-        stub_runtime.run()
+        daemon_runtime.run()
     except lifecycle.LockHeldError as e:
         running, pid = lifecycle.is_running(paths.pid_path())
         msg = f"daemon already running (pid {pid})" if running else str(e)

@@ -2,15 +2,20 @@
 from __future__ import annotations
 
 import os
+import re
 import tomllib
 import typing
 from pathlib import Path
 from typing import Any, Literal
 
 import tomli_w
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from remotask.core import secrets as rt_secrets
+
+# Telegram bot token format from @BotFather: <bot_id>:<35-char hash>.
+# Empty string is also accepted (config-not-yet-populated state).
+_BOT_TOKEN_RE = re.compile(r"^\d+:[A-Za-z0-9_-]{30,}$")
 
 
 class ConfigError(Exception):
@@ -39,6 +44,7 @@ class AgentConfig(BaseModel):
     permission_mode: Literal["default", "acceptEdits", "plan", "bypassPermissions"] = (
         "acceptEdits"
     )
+    session_timeout_seconds: int = Field(default=1800, ge=60, le=86400)
 
 
 class DaemonConfig(BaseModel):
@@ -51,6 +57,25 @@ class TelegramConfig(BaseModel):
     bot_token: str = ""
     group_chat_id: int = 0
     allowed_user_ids: list[int] = []
+    poll_timeout_seconds: int = Field(default=25, ge=1, le=60)
+    backoff_max_seconds: int = Field(default=60, ge=1, le=600)
+
+    @field_validator("bot_token")
+    @classmethod
+    def _validate_bot_token(cls, v: str) -> str:
+        if v and not _BOT_TOKEN_RE.fullmatch(v):
+            raise ValueError(
+                "telegram.bot_token must match '<digits>:<30+ url-safe chars>'"
+            )
+        return v
+
+    @field_validator("allowed_user_ids")
+    @classmethod
+    def _validate_user_ids(cls, v: list[int]) -> list[int]:
+        for uid in v:
+            if uid < 1:
+                raise ValueError("telegram.allowed_user_ids entries must be ≥ 1")
+        return v
 
 
 class LoggingConfig(BaseModel):

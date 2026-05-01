@@ -86,3 +86,34 @@ def remove(conn: sqlite3.Connection, jira_key: str) -> None:
     conn.commit()
     if cursor.rowcount == 0:
         raise UnknownKeyError(f"project {jira_key!r} is not registered")
+
+
+def by_prefix(conn: sqlite3.Connection, prefix: str) -> ProjectRow | None:
+    """Return the registered project for ``prefix`` (case-sensitive jira key match).
+
+    A row whose ``enabled`` column is ``0`` is treated as not registered — the
+    dispatcher's "unknown prefix" UX applies, per data-model.md.
+    """
+    row = conn.execute(
+        "SELECT jira_key, repo_path, base_branch, enabled, added_at, updated_at "
+        "FROM projects WHERE jira_key = ? AND enabled = 1",
+        (prefix,),
+    ).fetchone()
+    if row is None:
+        return None
+    return ProjectRow(
+        jira_key=row[0],
+        repo_path=row[1],
+        base_branch=row[2],
+        enabled=int(row[3]),
+        added_at=int(row[4]),
+        updated_at=int(row[5]),
+    )
+
+
+def list_registered_prefixes(conn: sqlite3.Connection) -> list[str]:
+    """Return enabled prefixes (jira keys) sorted alphabetically."""
+    rows = conn.execute(
+        "SELECT jira_key FROM projects WHERE enabled = 1 ORDER BY jira_key"
+    ).fetchall()
+    return [r[0] for r in rows]
