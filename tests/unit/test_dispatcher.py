@@ -524,8 +524,14 @@ def _slash_message(
     message_id: int = 1,
     message_thread_id: int | None = None,
 ) -> dict:
-    """Build a Telegram message with a bot_command entity at offset 0."""
-    first = text.split(" ", 1)[0]
+    """Build a Telegram message with a bot_command entity at offset 0.
+
+    The entity length covers up to the first whitespace run (tab, multiple
+    spaces, etc.) so this helper matches what real Telegram clients emit when
+    operators paste args with non-standard separators.
+    """
+    parts = text.split(maxsplit=1)
+    first = parts[0] if parts else text
     msg = {
         "message_id": message_id,
         "from": {"id": sender_id, "is_bot": False, "first_name": "tester"},

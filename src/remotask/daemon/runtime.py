@@ -308,11 +308,11 @@ class Runtime:
             self._listener = listener
             self._listener_state_obj = listener.state
 
-            # 004: register the curated slash-command set on the bot. Done
-            # right before listener.run() so a failure doesn't block startup
-            # (best-effort per FR-002). Inbound dispatch keeps working even
-            # if the autocomplete menu is stale.
-            await self._register_slash_commands()
+            # 004: register the curated slash-command set on the bot.
+            # Fired as a background task so a slow / unavailable Telegram
+            # cannot delay listener startup readiness — the listener loop
+            # below begins polling immediately. Best-effort per FR-002.
+            asyncio.create_task(self._register_slash_commands())
 
             self._ready.set()
             await listener.run()

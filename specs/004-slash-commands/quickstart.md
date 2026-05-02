@@ -22,7 +22,7 @@ remotask telegram status
 
 Look for the new line:
 
-```
+```text
 commands:        registered (last: 2026-05-02T08:30:15)
 ```
 
@@ -44,7 +44,7 @@ If you see no menu, the registration failed or the Telegram client cached an emp
 
 In the configured group's main chat, send:
 
-```
+```text
 /run ZXTL-1234 also please add a test
 ```
 
@@ -73,14 +73,14 @@ remotask config set agent.default_project_jira_key ZXTL
 
 Then in the group's main chat:
 
-```
+```text
 /run fix the cache layer please
 ```
 
 Expected:
 
-1. New topic with a synthetic name like `run-2026-05-02-14-fix-the-cache-a3f9b1`.
-2. `Session starting for run-2026-05-02-14-fix-the-cache-a3f9b1. Worktree: …` (using the ZXTL project's repo).
+1. New topic with a synthetic name like `run-2026-05-02-14-30-fix-the-cache-a3f9b1`.
+2. `Session starting for run-2026-05-02-14-30-fix-the-cache-a3f9b1. Worktree: …` (using the ZXTL project's repo).
 3. Progress lines, completion.
 
 DB check:
@@ -88,14 +88,14 @@ DB check:
 ```sh
 sqlite3 ~/.local/share/remotask/state.db \
   "SELECT issue_key, trigger_text FROM sessions ORDER BY enqueued_at DESC LIMIT 1;"
-# → run-2026-05-02-14-fix-the-cache-a3f9b1 | fix the cache layer please
+# → run-2026-05-02-14-30-fix-the-cache-a3f9b1 | fix the cache layer please
 ```
 
 ## Step 5 — `/done` (US2)
 
 Trigger a session you can interrupt (e.g. another `/run ZXTL-1235 ...`), wait for the first progress line, then **inside that topic** post:
 
-```
+```text
 /done
 ```
 
@@ -109,13 +109,13 @@ Expected within ~10 seconds:
 
 While at least one session is running and at least one terminal session exists, post in the main chat:
 
-```
+```text
 /status
 ```
 
 Expected reply (10-line cap, most-recent-first):
 
-```
+```text
 Active sessions (1):
 ZXTL-1235        running    iteration 2/5     45s ago
 
@@ -124,7 +124,7 @@ Type /status inside a topic for that session's detail.
 
 If no sessions are active:
 
-```
+```text
 No active sessions.
 ```
 
@@ -132,7 +132,7 @@ No active sessions.
 
 Inside a session-bound topic post `/status`. Expected:
 
-```
+```text
 ZXTL-1235
 status:    running
 iteration: 2/5 @ 2026-05-02T14:32:18Z
@@ -146,13 +146,13 @@ In a stale topic (no active session), expected: `No active session in this topic
 
 Post `/run` with no arguments (in the main chat or a topic):
 
-```
+```text
 /run
 ```
 
 Expected reply (chat-of-origin):
 
-```
+```text
 Usage: /run <PREFIX>-<NUM>  or  /run <free text> (requires agent.default_project_jira_key)
 ```
 
@@ -168,7 +168,7 @@ remotask config set agent.default_project_jira_key ""
 
 Post `/run fix the cache`. Expected reply (chat-of-origin):
 
-```
+```text
 No default project configured. Set agent.default_project_jira_key in config.toml or use /run <PREFIX>-<NUM>.
 ```
 

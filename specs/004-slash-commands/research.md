@@ -9,17 +9,33 @@ Each entry resolves an open decision raised in `plan.md`. After this phase, no `
 
 ## R1. setMyCommands placement in the runtime lifecycle
 
-**Decision**: Invoke `setMyCommands` from `Runtime._async_main()` **after** the listener performs its first successful `getUpdates`. Specifically, the listener's first poll loop iteration sets a "first poll OK" flag; the runtime observes the flag and fires `setMyCommands` once. Failure logs a warning but never blocks the listener.
+**Decision**: Spawn `setMyCommands` as a **background asyncio task** at the
+start of `Runtime._async_main()`, alongside (not before) `listener.run()`.
+Both run concurrently on the same loop. Failure logs a warning + emits an
+audit event but never blocks the listener — `Runtime._ready` flips to True
+the moment the listener task is created, regardless of registration outcome.
 
 **Rationale**:
-- Sequencing setMyCommands *after* a successful getUpdates proves the bot token is valid and reachable. If we register commands first and the token is bad, we'd see two failures in the log; this way the first failure (auth) is enough.
-- "Commands registered" lining up with "listener live" gives the operator a single mental model.
-- Best-effort posture (FR-002) is naturally enforced — the call is in a try/except and a fail just toggles a flag in `listener.state`.
+- Best-effort posture (FR-002) is enforced by the task model itself: the
+  await on `listener.run()` is independent of registration progress.
+- The listener's own startup precondition validation (002 §III) already
+  rejects malformed bot tokens before we get here, so the "wait for first
+  successful getUpdates to prove the token works" sequencing earlier
+  iterations of this contract considered would not catch failures any
+  earlier than the precondition check already does.
+- A slow/unavailable Telegram server cannot delay `remotask telegram start`'s
+  CLI-side readiness poll, which is what surfaces to the operator.
 
 **Alternatives rejected**:
-- *Register before listener starts*: misleading on bad credentials; double error noise.
-- *Register on every getUpdates success*: wasteful, and Telegram rate-limits `setMyCommands` per bot.
-- *Re-register periodically*: complexity for no operator-visible benefit (Telegram caches the command set persistently).
+- *Await registration before listener.run()*: blocks listener startup on
+  Telegram availability — exactly the failure mode we want to avoid.
+- *Sequence after first getUpdates ok*: implicitly couples registration to
+  the long-poll's first round-trip, which 002's precondition validation
+  already does for token validity.
+- *Register on every getUpdates success*: wasteful, and Telegram rate-limits
+  `setMyCommands` per bot.
+- *Re-register periodically*: complexity for no operator-visible benefit
+  (Telegram caches the command set persistently).
 
 ---
 
@@ -89,7 +105,7 @@ LIMIT 11;
 
 If 11 rows return, the reply renders the first 10 with a trailing "+ 1 more (truncated)" hint. The shape is:
 
-```
+```text
 ZXTL-1234        running    iteration 3/5     2 min ago
 run-2026-05-02…  starting   —                  18s ago
 + 0 more

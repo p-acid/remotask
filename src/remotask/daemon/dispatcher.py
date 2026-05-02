@@ -402,8 +402,15 @@ async def _accept_trigger(
     message_id: int | None,
     project: rt_projects.ProjectRow,
     ctx: DispatchContext,
-) -> None:
-    """Insert the session row + create the topic + hand off to the worker."""
+) -> str | None:
+    """Insert the session row + create the topic + hand off to the worker.
+
+    Returns the new session id on success, or ``None`` if the accept path
+    bailed early (e.g. createForumTopic failed and the session was marked
+    failed before the worker could spawn). 004 callers use the returned id
+    to record an additional ``slash_command_received`` audit row directly,
+    avoiding a race-prone post-hoc lookup.
+    """
     log = _log.bind(issue_key=issue_key, sender_id=sender_id)
     session_id = sessions.new_session_id()
 
@@ -469,7 +476,7 @@ async def _accept_trigger(
                 key=issue_key, reason=e.description or "unknown error"
             ),
         )
-        return
+        return None
 
     sessions.set_topic_id(ctx.conn, session_id=session_id, topic_id=forum.message_thread_id)
 
@@ -537,6 +544,7 @@ async def _accept_trigger(
         is_operator_stop_in_flight=_is_op_stop_in_flight,
     )
     ctx.spawn_worker_task(coro)
+    return session_id
 
 
 # ===========================================================================
@@ -779,8 +787,10 @@ async def _accept_via_slash(
         )
         return
 
-    # Reuse the existing 002 accept-trigger flow with the slash-supplied data.
-    await _accept_trigger(
+    # Reuse the existing 002 accept-trigger flow. It returns the new session
+    # id directly so we can attach the slash-command audit event without a
+    # post-hoc lookup (which would race with workers that complete inline).
+    new_session_id = await _accept_trigger(
         message_text=trigger_text,
         issue_key=issue_key,
         sender_id=invocation.sender_id,
@@ -790,12 +800,10 @@ async def _accept_via_slash(
         ctx=ctx,
     )
 
-    # Record the slash-command-received event tied to the (now-inserted) session.
-    new_session = core_db.get_active_session_for_issue(ctx.conn, issue_key)
-    if new_session is not None:
+    if new_session_id is not None:
         audit.record_event(
             ctx.conn,
-            session_id=new_session["id"],
+            session_id=new_session_id,
             type=audit.EV_SLASH_COMMAND_RECEIVED,
             payload={
                 "command": invocation.name,
@@ -866,10 +874,13 @@ async def _slash_status_main_chat(
 ) -> None:
     cur = ctx.conn.cursor()
     cur.row_factory = sqlite3.Row
+    # Single read = consistent snapshot. We pull up to 10 rows for display
+    # PLUS a separate COUNT(*) so the "+ N more" footer reflects the actual
+    # overflow rather than `min(actual, 11) - 10` (= always 1).
     cur.execute(
         f"SELECT id, issue_key, status, started_at, log_path, enqueued_at "
         f"FROM sessions WHERE status IN ({core_db._NON_TERMINAL_PLACEHOLDERS}) "
-        f"ORDER BY enqueued_at DESC LIMIT 11",
+        f"ORDER BY enqueued_at DESC LIMIT 10",
         core_db.NON_TERMINAL_STATES,
     )
     rows = cur.fetchall()
@@ -878,13 +889,18 @@ async def _slash_status_main_chat(
             ctx.client, chat_id=invocation.chat_id, text=topic.TPL_STATUS_NO_ACTIVE
         )
         return
+    total = ctx.conn.execute(
+        f"SELECT COUNT(*) FROM sessions WHERE status IN ({core_db._NON_TERMINAL_PLACEHOLDERS})",
+        core_db.NON_TERMINAL_STATES,
+    ).fetchone()[0]
 
-    truncated = len(rows) > 10
-    visible = rows[:10]
-    lines = [topic.TPL_STATUS_LIST_HEADER.format(count=len(visible))]
-    for row in visible:
+    lines = [topic.TPL_STATUS_LIST_HEADER.format(count=total)]
+    for row in rows:
         iter_str = _format_iteration_for_log(row["log_path"])
-        age = _format_age(int(row["enqueued_at"]))
+        # Prefer started_at (when the worker actually began) — falls back to
+        # enqueued_at for sessions that haven't transitioned past 'enqueued'.
+        anchor = row["started_at"] or row["enqueued_at"]
+        age = _format_age(int(anchor))
         lines.append(
             topic.TPL_STATUS_LIST_LINE.format(
                 key=row["issue_key"],
@@ -893,8 +909,8 @@ async def _slash_status_main_chat(
                 age=age,
             )
         )
-    if truncated:
-        lines.append(topic.TPL_STATUS_TRUNCATED.format(n=len(rows) - 10))
+    if total > len(rows):
+        lines.append(topic.TPL_STATUS_TRUNCATED.format(n=total - len(rows)))
     lines.append("")
     lines.append(topic.TPL_STATUS_LIST_HINT)
     await topic.post_to_main_chat(
@@ -919,7 +935,8 @@ async def _slash_status_topic_detail(
         return
 
     iter_str = _format_iteration_for_log(row["log_path"])
-    age = _format_age(int(row["enqueued_at"]))
+    anchor = row["started_at"] or row["enqueued_at"]
+    age = _format_age(int(anchor))
     detail = topic.TPL_STATUS_DETAIL.format(
         key=row["issue_key"],
         status=row["status"],
@@ -942,7 +959,13 @@ _PROGRESS_LINE_RE = _re.compile(r"^PROGRESS (\d+)/(\d+) (\S+)\s*$")
 
 
 def _format_iteration_for_log(log_path: str | None) -> str:
-    """Read the most recent PROGRESS line from a session log; render `i/N` or `—`."""
+    """Read the most recent PROGRESS line from a session log; render `i/N` or `—`.
+
+    The returned value is the bare ``i/N`` (e.g. ``3/5``) so callers can put it
+    behind their own label (``iteration: 3/5`` in the detail view, just ``3/5``
+    in the list view). This avoids the ``iteration: iteration 3/5`` label
+    duplication an earlier draft produced.
+    """
     if not log_path:
         return "—"
     try:
@@ -958,7 +981,7 @@ def _format_iteration_for_log(log_path: str | None) -> str:
     for line in tail.splitlines():
         m = _PROGRESS_LINE_RE.match(line)
         if m is not None:
-            last = f"iteration {m.group(1)}/{m.group(2)}"
+            last = f"{m.group(1)}/{m.group(2)}"
     return last or "—"
 
 

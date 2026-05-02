@@ -19,7 +19,7 @@
 
 ## Synthetic `issue_key` shape (free-text `/run`)
 
-```
+```text
 run-2026-05-02-14-fix-the-cache-a3f9b1
 └─ prefix     └─ minute        └─ slug         └─ 6 hex chars
    ("run")    (YYYY-MM-DD-HH-MM)   (≤20 chars,    (collision avoidance)
@@ -45,7 +45,7 @@ The full string fits well within Telegram's 128-char forum-topic-name limit:
 
 - `run-` (4) + `YYYY-MM-DD-HH-MM` (16) + `-` (1) + slug (≤ 20) + `-` (1) + 6 hex (6) = ≤ 48 chars.
 
-The session row's `issue_key` MUST be unique among non-terminal sessions per 002 FR-010. The hex suffix guarantees this.
+The session row's `issue_key` MUST be unique among non-terminal sessions per 002 FR-010. The 6-char hex suffix makes accidental same-minute / same-slug collisions astronomically unlikely (~ 1 in 16.7 million per pair) — not a hard guarantee, but in practice indistinguishable from one. If a collision ever does occur, the existing same-issue concurrency check (002 FR-010) rejects the second insertion with the standard "already in flight" reply, which is the same UX as a deliberate same-issue retrigger.
 
 ## `sessions.trigger_text` semantics (extended)
 

@@ -101,7 +101,10 @@ def match_slash_command(
         return None
 
     text = message.get("text") or ""
-    length = int(cmd_entity.get("length") or 0)
+    try:
+        length = int(cmd_entity.get("length") or 0)
+    except (TypeError, ValueError):
+        return None
     if length <= 0:
         return None
 
@@ -128,15 +131,22 @@ def match_slash_command(
     if sender is None or chat is None:
         return None
 
+    # Defensive int() with a single fail-closed return for any malformed field.
+    # The "fail closed" promise is the whole point of this parser.
+    try:
+        sender_int = int(sender)
+        chat_int = int(chat)
+        thread_raw = message.get("message_thread_id")
+        thread_int = int(thread_raw) if thread_raw is not None else None
+        message_id_int = int(message.get("message_id") or 0)
+    except (TypeError, ValueError):
+        return None
+
     return SlashCommandInvocation(
         name=name,
         args_text=rest,
-        sender_id=int(sender),
-        chat_id=int(chat),
-        message_thread_id=(
-            int(message["message_thread_id"])
-            if message.get("message_thread_id") is not None
-            else None
-        ),
-        message_id=int(message.get("message_id") or 0),
+        sender_id=sender_int,
+        chat_id=chat_int,
+        message_thread_id=thread_int,
+        message_id=message_id_int,
     )

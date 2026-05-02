@@ -71,8 +71,11 @@ async def test_set_my_commands_called_once_at_startup(
         await asyncio.sleep(0.5)
         rt.stop()
 
-    # Exactly one registration with the curated payload.
-    assert len(fake_tg.set_my_commands_calls) >= 1
+    # The runtime registers exactly once at startup (background task).
+    assert len(fake_tg.set_my_commands_calls) == 1, (
+        f"expected exactly 1 setMyCommands call at startup, "
+        f"got {len(fake_tg.set_my_commands_calls)}"
+    )
     payload = fake_tg.set_my_commands_calls[0]
     names = [c["command"] for c in payload]
     assert names == [c.name for c in CURATED_COMMANDS]

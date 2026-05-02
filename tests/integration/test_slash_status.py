@@ -205,5 +205,8 @@ async def test_status_main_chat_truncation_at_10(
     await client.aclose()
 
     body = next(m.text for m in fake_tg.sent_messages if m.message_thread_id is None)
-    assert "Active sessions (10)" in body
+    # Header reports the *total* active count (11), then 10 lines, then a
+    # "+ 1 more (truncated)" footer reflecting actual overflow rather than
+    # always-1 from the previous LIMIT 11 / fetch-all approach.
+    assert "Active sessions (11)" in body
     assert "+ 1 more" in body

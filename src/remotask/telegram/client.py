@@ -128,7 +128,7 @@ class TelegramClient:
     async def set_my_commands(self, commands: list[dict[str, str]]) -> dict[str, Any]:
         """Register the bot's curated slash-command list (default scope, all locales).
 
-        Each entry must have ``command`` (1–32 chars) and ``description`` (1–256
+        Each entry must have ``command`` (1-32 chars) and ``description`` (1-256
         chars). Idempotent: calling again with a different list overwrites.
         """
         return await self._call("setMyCommands", {"commands": commands}, throttle=True)

@@ -62,16 +62,17 @@ The HTTP wrapper reuses the existing `httpx.AsyncClient` from `telegram/client.p
 
 ## Lifecycle
 
-```
+```text
 Runtime.start() → listener thread spawned
         ↓
-listener.run() inside the asyncio loop
+asyncio loop opens DB conn, calls getMe (cache bot username)
         ↓
-listener performs first getUpdates successfully (proves token + reachability)
+runtime spawns set_my_commands(CURATED_COMMANDS) as a BACKGROUND task
+        │   (does not block listener.run() — best-effort per FR-002)
         ↓
-runtime detects "first poll OK" via a flag the listener sets
+listener.run() begins polling immediately (Runtime._ready is set)
         ↓
-runtime fires set_my_commands(CURATED_COMMANDS) once
+the background task runs concurrently:
         │
         ├─ success → listener_state.commands_registered = True
         │            listener_state.commands_registered_at = now
@@ -81,10 +82,21 @@ runtime fires set_my_commands(CURATED_COMMANDS) once
         └─ failure → listener_state.commands_registered = False
                      audit.log: commands_registration_failed (event, WARNING)
                      structlog WARNING: "command registration failed"
-                     NO RETRY in this listener lifetime — next restart will try again
+                     NO IN-PROCESS RETRY — next listener restart will try again
 ```
 
-The dispatch loop runs independently of registration. Even if `setMyCommands` never succeeds, inbound `bot_command` entities are still parsed and dispatched — the only operator-visible effect is the autocomplete menu may be missing or stale.
+The dispatch loop runs independently of registration. Even if `setMyCommands`
+never succeeds, inbound `bot_command` entities are still parsed and dispatched —
+the only operator-visible effect is the autocomplete menu may be missing or
+stale.
+
+**Why background instead of "after first getUpdates ok"?** An earlier draft of
+this contract sequenced registration after a first successful long-poll, which
+implicitly blocked listener readiness on Telegram availability. That coupling
+is unnecessary — the listener's own startup precondition validation (002 §III)
+already verifies the bot token format before we get here, so failing fast on a
+genuinely bad token is handled upstream. The background task model gives
+strictly better failure isolation.
 
 ## Idempotency
 
@@ -95,9 +107,9 @@ The dispatch loop runs independently of registration. Even if `setMyCommands` ne
 | Telegram response | Daemon behaviour |
 |---|---|
 | 200 OK + `{"ok": true}` | Registration recorded as success |
-| 401 Unauthorized | `setMyCommands` retries on next listener start; daemon also fails listener startup precondition (this is the `bot_token` validation path 003 already runs before getUpdates, so we never actually reach setMyCommands with a bad token) |
+| 401 Unauthorized | Listener startup precondition (002 §III) already rejects malformed bot tokens before this point; if a 401 still surfaces here, treat as a generic failure (warning + audit, no retry) |
 | 5xx / network blip | `commands_registered=false`, audit-warning, no in-process retry. Next listener restart re-attempts. |
-| 429 (rate-limited) | Honour `retry_after`, sleep, retry once inline. If still 429, treat as 5xx (no further retry this lifetime) |
+| 429 (rate-limited) | The shared `_call()` plumbing surfaces `retry_after`; the registration task treats 429 the same as a 5xx (warning + audit, no in-process retry). Operators rarely hit this for setMyCommands, and avoiding an inline retry keeps the background task's failure surface uniform. |
 
 ## Visibility to the operator
 
