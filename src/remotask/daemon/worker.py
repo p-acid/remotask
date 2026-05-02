@@ -240,7 +240,6 @@ async def run_worker(
     topic_id: int,
     is_operator_stop_in_flight: Callable[[], bool] | None = None,
     on_worker_started: Callable[[int], None] | None = None,
-    on_terminal: Callable[[str], None] | None = None,
 ) -> WorkerOutcome:
     """Spawn the worker, watch it to completion, and apply the resulting transitions.
 
@@ -259,15 +258,6 @@ async def run_worker(
     log = _log.bind(session_id=spec.session_id, issue_key=spec.issue_key)
     branch = _branch_for(spec.issue_key)
     worktree_path = _worktree_path_for(spec.worktree_root, spec.issue_key)
-
-    def _fire_terminal_hook() -> None:
-        # 005 (T006): clear per-session in-memory state when the session
-        # reaches a terminal state. Errors in the callback never propagate.
-        if on_terminal is not None:
-            try:
-                on_terminal(spec.session_id)
-            except Exception as e:  # pragma: no cover — defensive
-                log.warning("worker.on_terminal_callback_failed", error=str(e))
 
     try:
         await _create_worktree(
@@ -299,7 +289,6 @@ async def run_worker(
                 topic.TPL_SESSION_FAILED.format(reason=reason.splitlines()[0]),
             ),
         )
-        _fire_terminal_hook()
         return WorkerOutcome(exit_code=-1, pr_url=None, stderr_tail=reason)
 
     # Move starting → running and persist worktree + branch.
@@ -567,7 +556,6 @@ async def run_worker(
     with contextlib.suppress(Exception):
         await _remove_worktree(repo_path=spec.repo_path, worktree_path=worktree_path)
 
-    _fire_terminal_hook()
     return WorkerOutcome(
         exit_code=rc,
         pr_url=pr_url,

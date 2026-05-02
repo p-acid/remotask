@@ -42,20 +42,11 @@ EV_TELEGRAM_TERMINATION_REJECTED: Final = "telegram_termination_rejected"
 EV_SLASH_COMMAND_REJECTED: Final = "slash_command_rejected"
 EV_COMMANDS_REGISTERED: Final = "commands_registered"
 EV_COMMANDS_REGISTRATION_FAILED: Final = "commands_registration_failed"
-# 005: emitted (audit.log only) on every first use of a deprecated alias
-# token (`/done`, plain-text `done`/`stop`/`finish`) per (alias_token,
-# session_id) pair within a session lifetime. See data-model.md "Audit
-# event taxonomy additions".
-EV_ALIAS_DEPRECATION_USED: Final = "alias_deprecation_used"
 
 # ---- slash_command_rejected reason values --------------------------------
 
-# 005: distinguishable rejection reasons. ``REASON_MAIN_CHAT_DONE`` is
-# retained for the deprecated ``/done`` alias path (research R5) so audit
-# logs can separate "operator typed /cancel in the wrong place" from
-# "operator typed (deprecated) /done in the wrong place".
+# 005: ``/cancel`` issued in main chat (no topic_id) is rejected with this reason.
 REASON_MAIN_CHAT_CANCEL: Final = "main_chat_cancel"
-REASON_MAIN_CHAT_DONE: Final = "main_chat_done"
 
 
 def record_event(

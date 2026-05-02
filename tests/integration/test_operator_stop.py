@@ -79,6 +79,21 @@ def _message(text: str, *, sender_id: int, chat_id: int, message_id: int = 1) ->
     }
 
 
+def _slash_cancel(
+    *, sender_id: int, chat_id: int, topic_id: int, message_id: int
+) -> dict:
+    cmd = "/cancel"
+    return {
+        "message_id": message_id,
+        "from": {"id": sender_id, "is_bot": False, "first_name": "tester"},
+        "chat": {"id": chat_id, "type": "supergroup"},
+        "date": 1746115200,
+        "text": cmd,
+        "entities": [{"type": "bot_command", "offset": 0, "length": len(cmd)}],
+        "message_thread_id": topic_id,
+    }
+
+
 async def test_operator_stop_drives_canceled_with_operator_stop_reason(
     tmp_path: Path,
     isolated_xdg: Path,
@@ -147,11 +162,11 @@ async def test_operator_stop_drives_canceled_with_operator_stop_reason(
     assert row is not None
     sid, topic_id = row
 
-    # Now post `done` inside the bound topic.
-    stop_msg = {
-        **_message("done", sender_id=99001, chat_id=fake_tg.chat_id, message_id=42),
-        "message_thread_id": topic_id,
-    }
+    # 006: trigger termination via /cancel slash command (plain-text `done`
+    # is no longer a control token).
+    stop_msg = _slash_cancel(
+        sender_id=99001, chat_id=fake_tg.chat_id, topic_id=topic_id, message_id=42
+    )
     await rt_dispatcher.dispatch(stop_msg, ctx)
 
     # Wait for terminal state.
