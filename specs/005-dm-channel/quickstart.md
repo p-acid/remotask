@@ -30,7 +30,7 @@ If it reads `not registered (will retry on next restart)`, check `~/.local/share
 
 ## Step 2 — observe the autocomplete menu (US1, US2)
 
-In the configured forum group OR a 1:1 DM with the bot, type `/`. Expected (within ~1 second):
+In the configured forum group, type `/`. Expected (within ~1 second):
 
 | Slot | Display |
 |------|---------|
@@ -173,8 +173,13 @@ Expected:
 - The second `/done` finds no active session (worker already exited) and audit-rejects with `reason=no_active_session`. **No second WARNING is logged for this (alias=/done, session_id) pair.**
 
 ```sh
+# First, find the session_id for the most recent ZXTL-1239 session:
+SID=$(sqlite3 ~/.local/share/remotask/state.db \
+  "SELECT id FROM sessions WHERE issue_key='ZXTL-1239' ORDER BY enqueued_at DESC LIMIT 1;")
+# Then count the alias_deprecation_used rows keyed by session_id (NOT issue_key —
+# the alias_deprecation_used payload carries session_id, not issue_key).
 grep '"alias_token": "/done"' ~/.local/share/remotask/logs/audit.log \
-  | grep "ZXTL-1239" | wc -l
+  | grep "\"session_id\": \"$SID\"" | wc -l
 # → 1
 ```
 
@@ -274,8 +279,15 @@ Trigger session A, `/done` it, then trigger session B and `/done` it:
 Expected: WARNING fires twice (once per session).
 
 ```sh
+# Resolve session_ids for the two issue keys, then count alias_deprecation_used
+# rows keyed by session_id. (The audit payload carries session_id, not
+# issue_key, so grepping for the issue key directly would miss matches.)
+SID_A=$(sqlite3 ~/.local/share/remotask/state.db \
+  "SELECT id FROM sessions WHERE issue_key='ZXTL-1244' ORDER BY enqueued_at DESC LIMIT 1;")
+SID_B=$(sqlite3 ~/.local/share/remotask/state.db \
+  "SELECT id FROM sessions WHERE issue_key='ZXTL-1245' ORDER BY enqueued_at DESC LIMIT 1;")
 grep '"alias_token": "/done"' ~/.local/share/remotask/logs/audit.log \
-  | grep -E "ZXTL-1244|ZXTL-1245" | wc -l
+  | grep -E "\"session_id\": \"($SID_A|$SID_B)\"" | wc -l
 # → 2
 ```
 

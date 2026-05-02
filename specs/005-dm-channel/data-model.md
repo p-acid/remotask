@@ -117,7 +117,7 @@ Coverage table:
 | `Status: final iteration N (operator_stop)`            | **Yes**   |  |
 | `Status: completed` / `Status: canceled` / `Status: failed` | **Yes**  |  |
 | `Session canceled by operator.`                        | **Yes**   |  |
-| `Session stopped (forced) by operator.`                | **Yes**   |  |
+| `Session force-canceled by operator (grace window exceeded).` | **Yes**   |  |
 | `Session timed out` / `Session failed: <reason>`       | **Yes**   |  |
 | `/run` empty-args usage hint                           | **No**    | Not session-bound |
 | `/run` no-default-project hint                         | **No**    | Not session-bound |

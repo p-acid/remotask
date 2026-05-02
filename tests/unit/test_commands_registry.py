@@ -44,9 +44,14 @@ class TestRegistryShape:
         assert args_required == {"run"}
 
     def test_cancel_description_says_cancel(self) -> None:
-        # Sanity check the operator-visible description.
+        # Sanity check the operator-visible description: must contain the whole
+        # word "cancel" (case-insensitive), not just a substring like "ancel".
+        import re
+
         c = next(c for c in CURATED_COMMANDS if c.name == "cancel")
-        assert "ancel" in c.description  # "Cancel" or "cancel"
+        assert re.search(r"\bcancel\b", c.description, re.IGNORECASE), (
+            f"description {c.description!r} should contain the word 'cancel'"
+        )
 
 
 class TestLookup:

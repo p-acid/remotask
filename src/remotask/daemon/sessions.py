@@ -136,17 +136,21 @@ async def post_status_to_topic(
 ) -> None:
     """Best-effort ``Status: <new_status>`` post into the bound topic.
 
-    005: when ``issue_key`` is provided, the body is routed through
-    :func:`topic.format_progress` to gain the ``[KEY]`` prefix (FR-009).
-    Callers from 002–004 that don't pass ``issue_key`` produce un-prefixed
-    bodies for backwards compatibility (un-prefixed Status: is also what
-    the 003/004 integration tests assert against).
+    005: every topic-bound status post MUST carry a ``[<issue_key>]`` prefix
+    (FR-009 / FR-011). When ``topic_id`` is non-None, ``issue_key`` is
+    therefore required — passing ``None`` raises :class:`ValueError` so a new
+    call site can't silently regress un-prefixed output. ``issue_key`` may
+    still be omitted when ``topic_id`` is None (no-op early return).
     """
     if topic_id is None:
         return
-    body = topic.TPL_STATUS.format(status=new_status)
-    if issue_key is not None:
-        body = topic.format_progress(issue_key, body)
+    if issue_key is None:
+        raise ValueError(
+            "issue_key is required for topic-bound status posts (FR-009 / FR-011)"
+        )
+    body = topic.format_progress(
+        issue_key, topic.TPL_STATUS.format(status=new_status)
+    )
     await topic.post_to_topic(
         client,
         chat_id=chat_id,

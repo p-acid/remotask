@@ -76,7 +76,7 @@ Jira는 모든 task·이슈의 단일 진실 원천이다.
 - 동일 issue 재트리거는 기존 세션이 active이면 거부하거나 명시적 takeover만 허용한다.
 - **Telegram 채널 매핑**(1:1 DM 스레드, 그룹 forum topic, 향후 web UI 등)은 presentation-layer 결정이며 헌법적 격리 모델의 일부가 아니다. 단, 채택된 매핑은 feature spec에 명시되어야 하고 audit 추적이 가능해야 한다.
 
-**근거**: 무인 실행 환경에서 컨텍스트 누수·작업 손실은 즉시 신뢰를 무너뜨린다. 격리의 본질은 파일시스템·git 상태이며, Telegram 채널 매핑은 UX 결정이라 분리되어 진화할 수 있어야 한다(예: 002~004의 forum-topic 모델 → 005의 1:1 DM 모델 전환). 단일 동시 실행이라도 worktree·branch 격리는 처음부터 강제되어야 한다.
+**근거**: 무인 실행 환경에서 컨텍스트 누수·작업 손실은 즉시 신뢰를 무너뜨린다. 격리의 본질은 파일시스템·git 상태이며, Telegram 채널 매핑은 UX 결정이라 분리되어 진화할 수 있어야 한다(예: 005에서 forum-topic 모델을 유지하되 `/done`을 `/cancel`로 캐노니컬 변경하고 multi-session 가독성을 위해 `[<issue_key>]` 프리픽스를 도입하는 식의 presentation-layer 진화). 단일 동시 실행이라도 worktree·branch 격리는 처음부터 강제되어야 한다.
 
 ### IV. MVP-First, Incremental Hardening
 

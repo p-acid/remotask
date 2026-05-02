@@ -2,11 +2,11 @@
 Active feature plan: `specs/005-dm-channel/plan.md`
 
 Related artifacts (read alongside the plan):
-- `specs/005-dm-channel/spec.md` — feature specification
-- `specs/005-dm-channel/research.md` — Phase 0 decisions
-- `specs/005-dm-channel/data-model.md` — schema reuse + Runtime in-memory map + new audit + listener.state additions
-- `specs/005-dm-channel/contracts/` — DM-channel dispatch protocol + reply-to threading
-- `specs/005-dm-channel/quickstart.md` — manual end-to-end DM flow + migration smoke
+- `specs/005-dm-channel/spec.md` — feature specification (rev 2 narrowed scope: `/cancel` rename + `[KEY]` prefix + alias deprecation; folder name retained)
+- `specs/005-dm-channel/research.md` — Phase 0 decisions (8 items, rev 2)
+- `specs/005-dm-channel/data-model.md` — V0001 schema reuse + Runtime `alias_deprecation_warned` set + new audit event + curated-set delta
+- `specs/005-dm-channel/contracts/` — `/cancel` dispatch + alias deprecation protocol
+- `specs/005-dm-channel/quickstart.md` — manual end-to-end forum-topic flow with `/cancel`, alias deprecation, `[KEY]` prefix verification
 
 Prior features (foundational; still authoritative):
 - `specs/004-slash-commands/plan.md` — setMyCommands, /run grammar, /status, slash-command dispatch
