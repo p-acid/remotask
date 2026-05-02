@@ -24,8 +24,8 @@ TPL_SESSION_TIMEOUT: Final = "Session terminated: timeout ({seconds}s)"
 TPL_DAEMON_RESTART_CLEANUP: Final = "Session terminated by daemon restart."
 TPL_PROGRESS: Final = "Status: iteration {i}/{n} @ {ts}"
 TPL_FINAL: Final = "Status: final iteration {i} ({reason})"
-TPL_OPERATOR_STOPPED: Final = "Session stopped by operator."
-TPL_OPERATOR_STOPPED_FORCED: Final = "Session force-stopped by operator (grace window exceeded)."
+TPL_OPERATOR_STOPPED: Final = "Session canceled by operator."
+TPL_OPERATOR_STOPPED_FORCED: Final = "Session force-canceled by operator (grace window exceeded)."
 
 # ---- 004 templates: slash-command surface ---------------------------------
 
@@ -68,6 +68,18 @@ TPL_TOPIC_CREATE_FAILED: Final = (
     "Cannot create topic for {key}: {reason}. "
     "Make sure the bot has 'Manage Topics' permission."
 )
+
+
+def format_progress(issue_key: str, body: str) -> str:
+    """Apply the ``[<issue_key>]`` prefix to a session-bound message body.
+
+    Single chokepoint for the 005 prefix. Body templates that *already* name
+    the issue_key (``Session starting for ZXTL-1234. …``, ``Draft PR opened:
+    …``) MUST NOT be passed through here — the worker composes those bodies
+    directly. See ``data-model.md`` "Outbound message catalogue" for the
+    Prefixed=Yes / Prefixed=No matrix.
+    """
+    return f"[{issue_key}] {body}"
 
 
 async def create_topic_for_session(

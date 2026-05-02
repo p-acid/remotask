@@ -17,7 +17,13 @@ class TestRegistryShape:
         assert len(CURATED_COMMANDS) == 3
 
     def test_canonical_names(self) -> None:
-        assert {c.name for c in CURATED_COMMANDS} == {"run", "done", "status"}
+        # 005: registry switches from {run, done, status} to {run, cancel, status}.
+        # /done is no longer advertised but still routed inbound (deprecation alias).
+        assert {c.name for c in CURATED_COMMANDS} == {"run", "cancel", "status"}
+
+    def test_done_is_not_advertised_in_registry(self) -> None:
+        # 005 FR-004 / FR-011: /done MUST NOT appear in the curated set.
+        assert "done" not in {c.name for c in CURATED_COMMANDS}
 
     def test_names_have_no_leading_slash(self) -> None:
         for c in CURATED_COMMANDS:
@@ -27,13 +33,25 @@ class TestRegistryShape:
         for c in CURATED_COMMANDS:
             assert 1 <= len(c.description) <= 256, c
 
-    def test_requires_topic_only_for_done(self) -> None:
+    def test_requires_topic_only_for_cancel(self) -> None:
+        # 005: /cancel inherits /done's requires_topic=True (operator-stop is
+        # only meaningful inside a session topic).
         topic_only = {c.name for c in CURATED_COMMANDS if c.requires_topic}
-        assert topic_only == {"done"}
+        assert topic_only == {"cancel"}
 
     def test_requires_args_only_for_run(self) -> None:
         args_required = {c.name for c in CURATED_COMMANDS if c.requires_args}
         assert args_required == {"run"}
+
+    def test_cancel_description_says_cancel(self) -> None:
+        # Sanity check the operator-visible description: must contain the whole
+        # word "cancel" (case-insensitive), not just a substring like "ancel".
+        import re
+
+        c = next(c for c in CURATED_COMMANDS if c.name == "cancel")
+        assert re.search(r"\bcancel\b", c.description, re.IGNORECASE), (
+            f"description {c.description!r} should contain the word 'cancel'"
+        )
 
 
 class TestLookup:
@@ -44,7 +62,14 @@ class TestLookup:
 
     def test_lookup_is_case_insensitive(self) -> None:
         assert lookup("RUN") is not None
-        assert lookup("Done") is not None
+        assert lookup("Cancel") is not None
+
+    def test_lookup_done_returns_none_post_005(self) -> None:
+        # 005: /done is NOT in the curated registry. Inbound /done is still
+        # handled by the dispatcher (deprecation alias path) — that lookup
+        # is hard-coded in dispatcher._handle_slash_command, not via this
+        # registry function.
+        assert lookup("done") is None
 
     def test_lookup_unknown_returns_none(self) -> None:
         assert lookup("foo") is None
@@ -85,9 +110,10 @@ class TestNoOverlapWithLegacyCommands:
     """The slash-command registry must not collide with 003 plain-text tokens."""
 
     def test_done_synonyms_not_in_registry(self) -> None:
-        legacy_synonyms = {"stop", "finish"}
+        # 005: the canonical command is /cancel; the plain-text 003 synonyms
+        # are done/stop/finish and they must NOT also be slash commands
+        # (otherwise the menu would show /stop and /finish that we don't
+        # actually handle).
+        legacy_synonyms = {"done", "stop", "finish"}
         registry_names = {c.name for c in CURATED_COMMANDS}
-        # The slash command is /done; the plain-text 003 synonyms are stop/finish
-        # and they must NOT also be slash commands (otherwise the menu would
-        # show /stop and /finish that we don't actually handle).
         assert registry_names.isdisjoint(legacy_synonyms)

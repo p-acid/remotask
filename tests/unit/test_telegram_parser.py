@@ -215,3 +215,51 @@ class TestMatchSlashCommand:
         m = match_slash_command(_slash_msg("/RUN args"))
         assert m is not None
         assert m.name == "run"
+
+
+class TestSlashCancel:
+    """005: /cancel canonical operator-stop slash command."""
+
+    def test_cancel_in_topic_no_args(self) -> None:
+        from remotask.telegram.parser import match_slash_command
+
+        m = match_slash_command(_slash_msg("/cancel", message_thread_id=42))
+        assert m is not None
+        assert m.name == "cancel"
+        assert m.args_text == ""
+        assert m.message_thread_id == 42
+
+    def test_cancel_in_main_chat(self) -> None:
+        from remotask.telegram.parser import match_slash_command
+
+        m = match_slash_command(_slash_msg("/cancel"))
+        assert m is not None
+        assert m.name == "cancel"
+        assert m.message_thread_id is None
+
+    def test_cancel_uppercase_canonicalises_to_lower(self) -> None:
+        from remotask.telegram.parser import match_slash_command
+
+        m = match_slash_command(_slash_msg("/CANCEL"))
+        assert m is not None
+        assert m.name == "cancel"
+
+    def test_cancel_at_botname(self) -> None:
+        from remotask.telegram.parser import match_slash_command
+
+        msg = _slash_msg("/cancel@curious_claude_notification_bot")
+        msg["entities"][0]["length"] = len("/cancel@curious_claude_notification_bot")
+        m = match_slash_command(msg, bot_username="curious_claude_notification_bot")
+        assert m is not None
+        assert m.name == "cancel"
+
+    def test_cancel_with_trailing_text_parses_args(self) -> None:
+        # /cancel grammar in 005 ignores args at dispatcher level (FR-002),
+        # but the parser still extracts them — the dispatcher decides what
+        # to do with non-empty args (treats as casual chat / out-of-scope).
+        from remotask.telegram.parser import match_slash_command
+
+        m = match_slash_command(_slash_msg("/cancel something"))
+        assert m is not None
+        assert m.name == "cancel"
+        assert m.args_text == "something"

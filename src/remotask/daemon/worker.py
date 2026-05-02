@@ -240,6 +240,7 @@ async def run_worker(
     topic_id: int,
     is_operator_stop_in_flight: Callable[[], bool] | None = None,
     on_worker_started: Callable[[int], None] | None = None,
+    on_terminal: Callable[[str], None] | None = None,
 ) -> WorkerOutcome:
     """Spawn the worker, watch it to completion, and apply the resulting transitions.
 
@@ -258,6 +259,15 @@ async def run_worker(
     log = _log.bind(session_id=spec.session_id, issue_key=spec.issue_key)
     branch = _branch_for(spec.issue_key)
     worktree_path = _worktree_path_for(spec.worktree_root, spec.issue_key)
+
+    def _fire_terminal_hook() -> None:
+        # 005 (T006): clear per-session in-memory state when the session
+        # reaches a terminal state. Errors in the callback never propagate.
+        if on_terminal is not None:
+            try:
+                on_terminal(spec.session_id)
+            except Exception as e:  # pragma: no cover — defensive
+                log.warning("worker.on_terminal_callback_failed", error=str(e))
 
     try:
         await _create_worktree(
@@ -284,8 +294,12 @@ async def run_worker(
             client,
             chat_id=chat_id,
             topic_id=topic_id,
-            text=topic.TPL_SESSION_FAILED.format(reason=reason.splitlines()[0]),
+            text=topic.format_progress(
+                spec.issue_key,
+                topic.TPL_SESSION_FAILED.format(reason=reason.splitlines()[0]),
+            ),
         )
+        _fire_terminal_hook()
         return WorkerOutcome(exit_code=-1, pr_url=None, stderr_tail=reason)
 
     # Move starting → running and persist worktree + branch.
@@ -301,7 +315,11 @@ async def run_worker(
         },
     )
     await sessions.post_status_to_topic(
-        client, chat_id=chat_id, topic_id=topic_id, new_status="running"
+        client,
+        chat_id=chat_id,
+        topic_id=topic_id,
+        new_status="running",
+        issue_key=spec.issue_key,
     )
 
     log_path = _session_log_path(spec.session_id)
@@ -343,7 +361,10 @@ async def run_worker(
             client,
             chat_id=chat_id,
             topic_id=topic_id,
-            text=topic.TPL_PROGRESS.format(i=i, n=n, ts=ts),
+            text=topic.format_progress(
+                spec.issue_key,
+                topic.TPL_PROGRESS.format(i=i, n=n, ts=ts),
+            ),
         )
 
     async def _on_final(iteration: int, reason: str) -> None:
@@ -351,7 +372,10 @@ async def run_worker(
             client,
             chat_id=chat_id,
             topic_id=topic_id,
-            text=topic.TPL_FINAL.format(i=iteration, reason=reason),
+            text=topic.format_progress(
+                spec.issue_key,
+                topic.TPL_FINAL.format(i=iteration, reason=reason),
+            ),
         )
 
     timed_out = False
@@ -441,7 +465,7 @@ async def run_worker(
             client,
             chat_id=chat_id,
             topic_id=topic_id,
-            text=topic.TPL_OPERATOR_STOPPED,
+            text=topic.format_progress(spec.issue_key, topic.TPL_OPERATOR_STOPPED),
         )
     elif operator_stop_forced:
         # Worker had to be killed after grace expired.
@@ -456,7 +480,9 @@ async def run_worker(
             client,
             chat_id=chat_id,
             topic_id=topic_id,
-            text=topic.TPL_OPERATOR_STOPPED_FORCED,
+            text=topic.format_progress(
+                spec.issue_key, topic.TPL_OPERATOR_STOPPED_FORCED
+            ),
         )
     elif timed_out:
         sessions.transition(
@@ -470,7 +496,10 @@ async def run_worker(
             client,
             chat_id=chat_id,
             topic_id=topic_id,
-            text=topic.TPL_SESSION_TIMEOUT.format(seconds=int(timeout or 0)),
+            text=topic.format_progress(
+                spec.issue_key,
+                topic.TPL_SESSION_TIMEOUT.format(seconds=int(timeout or 0)),
+            ),
         )
     elif rc == 0 and pr_url:
         sessions.transition(
@@ -481,8 +510,14 @@ async def run_worker(
             extra_columns={"pr_url": pr_url},
         )
         await sessions.post_status_to_topic(
-            client, chat_id=chat_id, topic_id=topic_id, new_status="pr_created"
+            client,
+            chat_id=chat_id,
+            topic_id=topic_id,
+            new_status="pr_created",
+            issue_key=spec.issue_key,
         )
+        # FR-010: TPL_PR_CREATED is intentionally NOT prefixed — the body
+        # already names the issue via the PR URL.
         await topic.post_to_topic(
             client,
             chat_id=chat_id,
@@ -497,7 +532,11 @@ async def run_worker(
             to_status="completed",
         )
         await sessions.post_status_to_topic(
-            client, chat_id=chat_id, topic_id=topic_id, new_status="completed"
+            client,
+            chat_id=chat_id,
+            topic_id=topic_id,
+            new_status="completed",
+            issue_key=spec.issue_key,
         )
     else:
         # Non-zero exit. ``stderr_tail`` carries the worker's last error line —
@@ -515,7 +554,10 @@ async def run_worker(
             client,
             chat_id=chat_id,
             topic_id=topic_id,
-            text=topic.TPL_SESSION_FAILED.format(reason=reason[:200]),
+            text=topic.format_progress(
+                spec.issue_key,
+                topic.TPL_SESSION_FAILED.format(reason=reason[:200]),
+            ),
         )
 
     sessions.release_issue_lock(conn, issue_key=spec.issue_key)
@@ -525,6 +567,7 @@ async def run_worker(
     with contextlib.suppress(Exception):
         await _remove_worktree(repo_path=spec.repo_path, worktree_path=worktree_path)
 
+    _fire_terminal_hook()
     return WorkerOutcome(
         exit_code=rc,
         pr_url=pr_url,

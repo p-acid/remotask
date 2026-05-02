@@ -132,13 +132,28 @@ async def post_status_to_topic(
     chat_id: int,
     topic_id: int | None,
     new_status: str,
+    issue_key: str | None = None,
 ) -> None:
-    """Best-effort ``Status: <new_status>`` post into the bound topic."""
+    """Best-effort ``Status: <new_status>`` post into the bound topic.
+
+    005: every topic-bound status post MUST carry a ``[<issue_key>]`` prefix
+    (FR-009 / FR-011). When ``topic_id`` is non-None, ``issue_key`` is
+    therefore required — passing ``None`` raises :class:`ValueError` so a new
+    call site can't silently regress un-prefixed output. ``issue_key`` may
+    still be omitted when ``topic_id`` is None (no-op early return).
+    """
     if topic_id is None:
         return
+    if issue_key is None:
+        raise ValueError(
+            "issue_key is required for topic-bound status posts (FR-009 / FR-011)"
+        )
+    body = topic.format_progress(
+        issue_key, topic.TPL_STATUS.format(status=new_status)
+    )
     await topic.post_to_topic(
         client,
         chat_id=chat_id,
         topic_id=topic_id,
-        text=topic.TPL_STATUS.format(status=new_status),
+        text=body,
     )
