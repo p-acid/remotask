@@ -19,5 +19,6 @@ reviews:
     - "!PRD.md"
     - "!ARCHITECTURE.md"
     - "!ARD.md"
+    - "!README.md"
 chat:
   auto_reply: true
