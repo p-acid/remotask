@@ -198,13 +198,6 @@ class Runtime:
         # 003: per-session worker-pid index, populated by the dispatcher when
         # it spawns a worker so the termination branch can ``os.kill`` it.
         self._worker_pid_by_session: dict[str, int] = {}
-        # 005: idempotency for the deprecation WARNING. Tuples of
-        # ``(alias_token, session_id)``. The first occurrence emits the
-        # WARNING + ``alias_deprecation_used`` audit row; subsequent
-        # occurrences on the same session are silent. Cleared per-session
-        # on terminal transition (see ``sessions.transition``). See
-        # data-model.md "Lifecycle of alias_deprecation_warned".
-        self._alias_deprecation_warned: set[tuple[str, str]] = set()
         # 004: cached bot username from getMe; used to strip @<botname> suffix
         # on inbound slash commands. None until the runtime calls getMe.
         self._bot_username: str | None = None
@@ -374,9 +367,6 @@ class Runtime:
             worker_pid_for_session=self.worker_pid_for_session,
             register_worker_pid=self.register_worker_pid,
             bot_username=self._bot_username,
-            has_alias_deprecation_warned=self.has_alias_deprecation_warned,
-            record_alias_deprecation_warned=self.record_alias_deprecation_warned,
-            clear_alias_deprecation_for_session=self.clear_alias_deprecation_for_session,
         )
         await rt_dispatcher.dispatch(message, ctx)
 
@@ -412,22 +402,6 @@ class Runtime:
 
     def worker_pid_for_session(self, session_id: str) -> int | None:
         return self._worker_pid_by_session.get(session_id)
-
-    # ---- 005: deprecation-alias idempotency ----------------------------------
-
-    def has_alias_deprecation_warned(self, alias_token: str, session_id: str) -> bool:
-        """Return True if a WARNING was already emitted for this (alias, session)."""
-        return (alias_token, session_id) in self._alias_deprecation_warned
-
-    def record_alias_deprecation_warned(self, alias_token: str, session_id: str) -> None:
-        """Mark this (alias_token, session_id) as warned. Subsequent calls are no-ops."""
-        self._alias_deprecation_warned.add((alias_token, session_id))
-
-    def clear_alias_deprecation_for_session(self, session_id: str) -> None:
-        """Drop every (_, session_id) tuple. Called on terminal transition."""
-        self._alias_deprecation_warned = {
-            tup for tup in self._alias_deprecation_warned if tup[1] != session_id
-        }
 
     # ---- shutdown ------------------------------------------------------------
 

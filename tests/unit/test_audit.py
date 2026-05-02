@@ -98,33 +98,7 @@ class TestLogUnboundEvent:
 
 
 class TestFiveZeroFiveConstants:
-    """005: new audit-event + reason constants."""
+    """005: surviving reason constant after 006 alias removal."""
 
-    def test_alias_deprecation_used_constant_value(self) -> None:
-        assert audit.EV_ALIAS_DEPRECATION_USED == "alias_deprecation_used"
-
-    def test_main_chat_cancel_reason_distinct_from_main_chat_done(self) -> None:
+    def test_main_chat_cancel_reason_value(self) -> None:
         assert audit.REASON_MAIN_CHAT_CANCEL == "main_chat_cancel"
-        assert audit.REASON_MAIN_CHAT_DONE == "main_chat_done"
-        assert audit.REASON_MAIN_CHAT_CANCEL != audit.REASON_MAIN_CHAT_DONE
-
-    def test_alias_deprecation_used_log_payload(self, audit_log_path: Path) -> None:
-        audit.log_unbound_event(
-            audit.EV_ALIAS_DEPRECATION_USED,
-            {
-                "alias_token": "/done",
-                "canonical": "cancel",
-                "session_id": "abc",
-                "sender_id": 1,
-                "message_id": 2,
-                "chat_id": 3,
-                "message_thread_id": 4,
-            },
-        )
-        records = _read_audit_lines(audit_log_path)
-        assert len(records) == 1
-        rec = records[0]
-        assert rec["event_type"] == "alias_deprecation_used"
-        assert rec["alias_token"] == "/done"
-        assert rec["canonical"] == "cancel"
-        assert rec["session_id"] == "abc"

@@ -1,7 +1,7 @@
-"""Telegram message parsers — issue-key trigger, termination grammar, slash commands.
+"""Telegram message parsers — issue-key trigger and slash commands.
 
-The grammars are fixed by the contracts in ``specs/002-…/`` (issue-key),
-``specs/003-…/`` (termination), and ``specs/004-…/`` (slash commands).
+The grammars are fixed by the contracts in ``specs/002-…/`` (issue-key) and
+``specs/004-…/`` (slash commands).
 """
 from __future__ import annotations
 
@@ -29,26 +29,6 @@ def extract_first_issue_key(text: str) -> str | None:
 def split_prefix(issue_key: str) -> str:
     """Return the prefix portion of an issue key (the part before the dash)."""
     return issue_key.split("-", 1)[0]
-
-
-# 003 termination grammar: a single token from a small fixed set, case-insensitive.
-# Match is performed against the trimmed text to absorb trailing whitespace.
-_TERMINATION_RE = re.compile(r"^(done|stop|finish)$", re.IGNORECASE)
-
-
-def match_termination_command(text: str) -> str | None:
-    """Return the canonical lowercase token if ``text`` is a termination command.
-
-    The grammar is intentionally narrow (single token from ``{done, stop,
-    finish}``, case-insensitive) so that ordinary topic chat doesn't
-    accidentally cancel a session.
-    """
-    if not text:
-        return None
-    m = _TERMINATION_RE.match(text.strip())
-    if m is None:
-        return None
-    return m.group(1).lower()
 
 
 # 004: slash-command parser. Telegram annotates `/foo bar` messages with

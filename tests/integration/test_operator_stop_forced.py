@@ -85,6 +85,21 @@ def _msg(text: str, *, sender_id: int, chat_id: int, message_id: int = 1, topic_
     return out
 
 
+def _slash_cancel(
+    *, sender_id: int, chat_id: int, topic_id: int, message_id: int
+) -> dict:
+    cmd = "/cancel"
+    return {
+        "message_id": message_id,
+        "from": {"id": sender_id, "is_bot": False, "first_name": "tester"},
+        "chat": {"id": chat_id, "type": "supergroup"},
+        "date": 1746115200,
+        "text": cmd,
+        "entities": [{"type": "bot_command", "offset": 0, "length": len(cmd)}],
+        "message_thread_id": topic_id,
+    }
+
+
 async def test_unresponsive_worker_is_force_killed(
     tmp_path: Path,
     isolated_xdg: Path,
@@ -149,9 +164,11 @@ async def test_unresponsive_worker_is_force_killed(
     assert row is not None
     sid, topic_id = row
 
-    # Now post `done` in the bound topic.
+    # 006: trigger termination via /cancel slash (plain-text `done` no longer works).
     await rt_dispatcher.dispatch(
-        _msg("done", sender_id=99001, chat_id=fake_tg.chat_id, topic_id=topic_id, message_id=42),
+        _slash_cancel(
+            sender_id=99001, chat_id=fake_tg.chat_id, topic_id=topic_id, message_id=42
+        ),
         ctx,
     )
 
