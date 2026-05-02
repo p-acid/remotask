@@ -58,6 +58,11 @@ class FakeTelegram:
     next_error: dict[str, tuple[int, dict[str, Any]]] = field(default_factory=dict)
     # Records every getUpdates call: list of (offset, timeout) tuples.
     get_updates_calls: list[tuple[int | None, int]] = field(default_factory=list)
+    # 004: every setMyCommands call records its commands payload here.
+    set_my_commands_calls: list[list[dict[str, Any]]] = field(default_factory=list)
+    # 004: bot identity returned by getMe — overridable per-test.
+    bot_username: str = "curious_claude_notification_bot"
+    bot_id: int = 8068937012
 
     # ---- public test API ----------------------------------------------------
 
@@ -68,6 +73,7 @@ class FakeTelegram:
         *,
         chat_id: int | None = None,
         message_id: int | None = None,
+        message_thread_id: int | None = None,
     ) -> dict[str, Any]:
         """Enqueue a text message that will be returned by the next getUpdates."""
         msg = {
@@ -77,6 +83,48 @@ class FakeTelegram:
             "date": 1746115200,
             "text": text,
         }
+        if message_thread_id is not None:
+            msg["message_thread_id"] = message_thread_id
+        update = {"update_id": next(self._next_update_id), "message": msg}
+        self._pending_updates.append(update)
+        return msg
+
+    def push_slash_command(
+        self,
+        command: str,
+        sender_id: int,
+        *,
+        args: str = "",
+        with_botname: bool = False,
+        chat_id: int | None = None,
+        message_thread_id: int | None = None,
+        message_id: int | None = None,
+    ) -> dict[str, Any]:
+        """Enqueue a properly-shaped slash-command update.
+
+        ``command`` is bare ("run", "done", "status"). The wrapper prepends the
+        ``/`` and appends ``@<botname>`` if ``with_botname`` is True. Args are
+        joined verbatim with a single space.
+        """
+        cmd_text = f"/{command}"
+        if with_botname:
+            cmd_text += f"@{self.bot_username}"
+        text = f"{cmd_text} {args}".rstrip() if args else cmd_text
+        # The bot_command entity covers from offset 0 through the end of the
+        # command portion (incl. @<botname> if present).
+        entity_length = len(cmd_text)
+        msg: dict[str, Any] = {
+            "message_id": message_id if message_id is not None else next(self._next_message_id),
+            "from": {"id": sender_id, "is_bot": False, "first_name": "tester"},
+            "chat": {"id": chat_id if chat_id is not None else self.chat_id, "type": "supergroup"},
+            "date": 1746115200,
+            "text": text,
+            "entities": [
+                {"type": "bot_command", "offset": 0, "length": entity_length}
+            ],
+        }
+        if message_thread_id is not None:
+            msg["message_thread_id"] = message_thread_id
         update = {"update_id": next(self._next_update_id), "message": msg}
         self._pending_updates.append(update)
         return msg
@@ -107,6 +155,10 @@ class FakeTelegram:
             return self._handle_create_forum_topic(params)
         if method == "sendMessage":
             return self._handle_send_message(params)
+        if method == "setMyCommands":
+            return self._handle_set_my_commands(params)
+        if method == "getMe":
+            return self._handle_get_me()
         # Unknown method — fail loudly so tests catch protocol drift.
         return httpx.Response(
             404, json={"ok": False, "error_code": 404, "description": f"unknown method {method}"}
@@ -138,6 +190,28 @@ class FakeTelegram:
             json={
                 "ok": True,
                 "result": {"message_thread_id": thread_id, "name": name, "icon_color": 0},
+            },
+        )
+
+    def _handle_set_my_commands(self, params: dict[str, Any]) -> httpx.Response:
+        commands = list(params.get("commands") or [])
+        self.set_my_commands_calls.append(commands)
+        return httpx.Response(200, json={"ok": True, "result": True})
+
+    def _handle_get_me(self) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "result": {
+                    "id": self.bot_id,
+                    "is_bot": True,
+                    "first_name": "fake bot",
+                    "username": self.bot_username,
+                    "can_join_groups": True,
+                    "can_read_all_group_messages": True,
+                    "supports_inline_queries": False,
+                },
             },
         )
 

@@ -1,12 +1,13 @@
-"""Pure issue-key extraction.
+"""Telegram message parsers — issue-key trigger, termination grammar, slash commands.
 
-The grammar is fixed by ``contracts/telegram-protocol.md``:
-``\\b[A-Z][A-Z0-9_]{1,9}-\\d{1,6}\\b``. The first match in the message is the
-trigger; later matches are ignored.
+The grammars are fixed by the contracts in ``specs/002-…/`` (issue-key),
+``specs/003-…/`` (termination), and ``specs/004-…/`` (slash commands).
 """
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
+from typing import Any
 
 # Word-boundary anchored. Prefix is 2-10 chars (1+9), starting with an uppercase
 # letter, then up to 9 uppercase letters / digits / underscores. Number is 1-6
@@ -48,3 +49,104 @@ def match_termination_command(text: str) -> str | None:
     if m is None:
         return None
     return m.group(1).lower()
+
+
+# 004: slash-command parser. Telegram annotates `/foo bar` messages with
+# entities[0].type == "bot_command" at offset 0. We trust the entity rather
+# than re-grammaring the text — that's how clients themselves recognise the
+# autocomplete-driven command.
+
+
+@dataclass(frozen=True)
+class SlashCommandInvocation:
+    """An inbound message recognised as a slash command.
+
+    Args are the trimmed text after the command (and after ``@<botname>`` if
+    present). They preserve any internal whitespace verbatim so the operator's
+    free-text request reaches the worker untouched.
+    """
+
+    name: str  # canonical lowercase, no leading slash
+    args_text: str  # everything after the command, leading whitespace stripped
+    sender_id: int
+    chat_id: int
+    message_thread_id: int | None
+    message_id: int
+
+
+def match_slash_command(
+    message: dict[str, Any], *, bot_username: str | None = None
+) -> SlashCommandInvocation | None:
+    """Return a ``SlashCommandInvocation`` if ``message`` carries a slash command.
+
+    Recognition rule (per ``contracts/slash-command-protocol.md``):
+
+    - The message must have an ``entities`` array.
+    - One of those entities must have ``type == "bot_command"`` and
+      ``offset == 0``.
+
+    Anything else (no entity, entity at non-zero offset, edited messages with a
+    different shape) returns ``None``.
+    """
+    entities = message.get("entities") or []
+    cmd_entity = next(
+        (
+            e
+            for e in entities
+            if e.get("type") == "bot_command" and e.get("offset") == 0
+        ),
+        None,
+    )
+    if cmd_entity is None:
+        return None
+
+    text = message.get("text") or ""
+    try:
+        length = int(cmd_entity.get("length") or 0)
+    except (TypeError, ValueError):
+        return None
+    if length <= 0:
+        return None
+
+    raw = text[:length]
+    rest = text[length:].lstrip()
+
+    # raw is "/run" or "/run@curious_claude_notification_bot".
+    name_with_at = raw.lstrip("/")
+    name = name_with_at.split("@", 1)[0].lower()
+    if not name:
+        return None
+
+    # If a bot username is known and it appears as the suffix, it must match.
+    # We don't *require* a known bot_username (it's optional in the runtime),
+    # but if we have it we use it to defend against hostile @<otherbot>
+    # suffixes that some Telegram clients would still send our way.
+    if "@" in name_with_at and bot_username is not None:
+        provided_bot = name_with_at.split("@", 1)[1].lower()
+        if provided_bot != bot_username.lower():
+            return None
+
+    sender = (message.get("from") or {}).get("id")
+    chat = (message.get("chat") or {}).get("id")
+    if sender is None or chat is None:
+        return None
+
+    # Defensive int() with a single fail-closed return for any malformed field.
+    # The "fail closed" promise is the whole point of this parser.
+    try:
+        sender_int = int(sender)
+        chat_int = int(chat)
+        thread_raw = message.get("message_thread_id")
+        thread_int = int(thread_raw) if thread_raw is not None else None
+        message_id_int = int(message.get("message_id") or 0)
+    except (TypeError, ValueError):
+        return None
+
+    return SlashCommandInvocation(
+        name=name,
+        args_text=rest,
+        sender_id=sender_int,
+        chat_id=chat_int,
+        message_thread_id=thread_int,
+        message_id=message_id_int,
+    )

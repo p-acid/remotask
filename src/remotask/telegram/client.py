@@ -125,6 +125,19 @@ class TelegramClient:
             params["message_thread_id"] = message_thread_id
         return await self._call("sendMessage", params, throttle=True)
 
+    async def set_my_commands(self, commands: list[dict[str, str]]) -> dict[str, Any]:
+        """Register the bot's curated slash-command list (default scope, all locales).
+
+        Each entry must have ``command`` (1-32 chars) and ``description`` (1-256
+        chars). Idempotent: calling again with a different list overwrites.
+        """
+        return await self._call("setMyCommands", {"commands": commands}, throttle=True)
+
+    async def get_me(self) -> dict[str, Any]:
+        """Fetch the bot's own metadata — used to cache its username for
+        stripping ``@<botname>`` suffixes from inbound slash commands."""
+        return await self._call("getMe", {}, throttle=False)
+
     # ---- internals -----------------------------------------------------------
 
     async def _call(

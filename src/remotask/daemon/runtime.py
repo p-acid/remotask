@@ -44,7 +44,8 @@ from remotask.daemon import dispatcher as rt_dispatcher
 from remotask.daemon import listener_cmd as rt_listener_cmd
 from remotask.daemon.listener import Listener
 from remotask.daemon.listener_state import HeartbeatWriter
-from remotask.telegram.client import TelegramClient
+from remotask.telegram import commands as rt_commands
+from remotask.telegram.client import TelegramAPIError, TelegramClient
 
 _log = structlog.get_logger().bind(component="runtime")
 
@@ -197,6 +198,13 @@ class Runtime:
         # 003: per-session worker-pid index, populated by the dispatcher when
         # it spawns a worker so the termination branch can ``os.kill`` it.
         self._worker_pid_by_session: dict[str, int] = {}
+        # 004: cached bot username from getMe; used to strip @<botname> suffix
+        # on inbound slash commands. None until the runtime calls getMe.
+        self._bot_username: str | None = None
+        # 004: heartbeat writer cached so the setMyCommands result can flush
+        # immediately into listener.state.
+        self._heartbeat_writer: HeartbeatWriter | None = None
+        self._listener_state_obj = None  # filled by _async_main
 
     # ---- lifecycle (main thread) ---------------------------------------------
 
@@ -275,6 +283,19 @@ class Runtime:
                 conn=conn, client=client, chat_id=self._cfg.telegram.group_chat_id
             )
 
+            # 004: fetch the bot's own metadata so the dispatcher can strip
+            # ``@<botname>`` suffixes from slash commands. Best-effort — a
+            # transient failure here only weakens suffix matching, not
+            # dispatch correctness.
+            try:
+                me = await client.get_me()
+                self._bot_username = (me or {}).get("username")
+            except TelegramAPIError as e:
+                _log.warning("runtime.get_me_failed", error=str(e))
+
+            heartbeat = HeartbeatWriter()
+            self._heartbeat_writer = heartbeat
+
             listener = Listener(
                 client=client,
                 chat_id=self._cfg.telegram.group_chat_id,
@@ -282,9 +303,17 @@ class Runtime:
                 poll_timeout_seconds=self._cfg.telegram.poll_timeout_seconds,
                 backoff_max_seconds=self._cfg.telegram.backoff_max_seconds,
                 whitelist_size=len(self._cfg.telegram.allowed_user_ids),
-                state_writer=HeartbeatWriter(),
+                state_writer=heartbeat,
             )
             self._listener = listener
+            self._listener_state_obj = listener.state
+
+            # 004: register the curated slash-command set on the bot.
+            # Fired as a background task so a slow / unavailable Telegram
+            # cannot delay listener startup readiness — the listener loop
+            # below begins polling immediately. Best-effort per FR-002.
+            asyncio.create_task(self._register_slash_commands())
+
             self._ready.set()
             await listener.run()
         finally:
@@ -292,6 +321,34 @@ class Runtime:
             await client.aclose()
             with _suppress():
                 conn.close()
+
+    async def _register_slash_commands(self) -> None:
+        """Best-effort setMyCommands. Failure is logged + audited but never raises."""
+        import time as _time
+
+        from remotask.daemon import audit as rt_audit
+
+        assert self._client is not None and self._listener_state_obj is not None
+        payload = rt_commands.to_bot_api_payload()
+        try:
+            await self._client.set_my_commands(payload)
+        except Exception as e:  # noqa: BLE001 — best-effort
+            _log.warning("runtime.set_my_commands_failed", error=str(e))
+            self._listener_state_obj.commands_registered = False
+            rt_audit.log_unbound_event(
+                rt_audit.EV_COMMANDS_REGISTRATION_FAILED,
+                {"error": str(e), "attempted_at": _time.time()},
+            )
+            return
+
+        now = _time.time()
+        self._listener_state_obj.commands_registered = True
+        self._listener_state_obj.commands_registered_at = now
+        rt_audit.log_unbound_event(
+            rt_audit.EV_COMMANDS_REGISTERED,
+            {"commands": payload, "registered_at": now},
+        )
+        _log.info("runtime.commands_registered", count=len(payload))
 
     # ---- dispatcher hook -----------------------------------------------------
 
@@ -305,6 +362,11 @@ class Runtime:
             spawn_worker_task=self._spawn_worker_task,
             worker_argv=self._worker_argv,
             worker_env=self._worker_env,
+            mark_operator_stop_in_flight=self.mark_operator_stop_in_flight,
+            is_operator_stop_in_flight=self.is_operator_stop_in_flight,
+            worker_pid_for_session=self.worker_pid_for_session,
+            register_worker_pid=self.register_worker_pid,
+            bot_username=self._bot_username,
         )
         await rt_dispatcher.dispatch(message, ctx)
 

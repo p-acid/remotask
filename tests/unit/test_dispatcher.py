@@ -511,3 +511,178 @@ class TestTerminationBranch:
         # state_transition rows from the seed do not exist (we inserted directly);
         # nothing new should appear from this dispatch.
         assert "telegram_termination_received" not in type_seq
+
+
+# ----- 004 / US1: slash-command dispatch ----------------------------------
+
+
+def _slash_message(
+    text: str,
+    *,
+    sender_id: int,
+    chat_id: int,
+    message_id: int = 1,
+    message_thread_id: int | None = None,
+) -> dict:
+    """Build a Telegram message with a bot_command entity at offset 0.
+
+    The entity length covers up to the first whitespace run (tab, multiple
+    spaces, etc.) so this helper matches what real Telegram clients emit when
+    operators paste args with non-standard separators.
+    """
+    parts = text.split(maxsplit=1)
+    first = parts[0] if parts else text
+    msg = {
+        "message_id": message_id,
+        "from": {"id": sender_id, "is_bot": False, "first_name": "tester"},
+        "chat": {"id": chat_id, "type": "supergroup"},
+        "date": 1746115200,
+        "text": text,
+        "entities": [{"type": "bot_command", "offset": 0, "length": len(first)}],
+    }
+    if message_thread_id is not None:
+        msg["message_thread_id"] = message_thread_id
+    return msg
+
+
+class TestSlashRunBranch:
+    async def test_accepted_run_with_jira_key_inserts_session(
+        self,
+        conn: sqlite3.Connection,
+        client: TelegramClient,
+        cfg: rt_config.ConfigSchema,
+        fake_tg: FakeTelegram,
+    ) -> None:
+        spawned: list = []
+        ctx = _build_ctx(
+            conn=conn,
+            client=client,
+            cfg=cfg,
+            spawn=lambda coro: (spawned.append(coro), coro.close())[1] if hasattr(coro, "close") else None,
+        )
+        msg = _slash_message(
+            "/run ZXTL-1234 also add tests",
+            sender_id=99001,
+            chat_id=fake_tg.chat_id,
+        )
+
+        await rt_dispatcher.dispatch(msg, ctx)
+
+        rows = conn.execute(
+            "SELECT issue_key, trigger_text FROM sessions"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == "ZXTL-1234"
+        assert rows[0][1] == "also add tests"
+
+        events = [
+            r[0]
+            for r in conn.execute("SELECT type FROM session_events").fetchall()
+        ]
+        assert "slash_command_received" in events
+
+    async def test_run_empty_args_replies_usage_hint(
+        self,
+        conn: sqlite3.Connection,
+        client: TelegramClient,
+        cfg: rt_config.ConfigSchema,
+        fake_tg: FakeTelegram,
+    ) -> None:
+        ctx = _build_ctx(
+            conn=conn,
+            client=client,
+            cfg=cfg,
+            spawn=lambda coro: coro.close() if hasattr(coro, "close") else None,
+        )
+        msg = _slash_message("/run", sender_id=99001, chat_id=fake_tg.chat_id)
+
+        await rt_dispatcher.dispatch(msg, ctx)
+
+        # No session created.
+        assert conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 0
+        # A main-chat reply with the usage hint.
+        replies = [m for m in fake_tg.sent_messages if m.message_thread_id is None]
+        assert any("Usage: /run" in m.text for m in replies)
+
+
+class TestSlashUnknownCommand:
+    async def test_unknown_slash_silently_audited(
+        self,
+        tmp_path,
+        conn: sqlite3.Connection,
+        client: TelegramClient,
+        cfg: rt_config.ConfigSchema,
+        fake_tg: FakeTelegram,
+    ) -> None:
+        from remotask.core import logging as rt_logging
+
+        log_dir = tmp_path / "logs"
+        rt_logging.setup_logging(level="DEBUG", log_dir=log_dir, force_json=True)
+
+        ctx = _build_ctx(
+            conn=conn,
+            client=client,
+            cfg=cfg,
+            spawn=lambda coro: coro.close() if hasattr(coro, "close") else None,
+        )
+        msg = _slash_message("/foo something", sender_id=99001, chat_id=fake_tg.chat_id)
+
+        await rt_dispatcher.dispatch(msg, ctx)
+
+        assert conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 0
+        assert fake_tg.sent_messages == []
+        # Audit log captures the rejection.
+        import json
+
+        events = [
+            json.loads(line)
+            for line in (log_dir / "audit.log").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        assert any(
+            e.get("event_type") == "slash_command_rejected"
+            and e.get("reason") == "unknown_command"
+            for e in events
+        )
+
+
+class TestSlashUnauthorized:
+    async def test_unauthorised_slash_audited_distinctly(
+        self,
+        tmp_path,
+        conn: sqlite3.Connection,
+        client: TelegramClient,
+        cfg: rt_config.ConfigSchema,
+        fake_tg: FakeTelegram,
+    ) -> None:
+        from remotask.core import logging as rt_logging
+
+        log_dir = tmp_path / "logs"
+        rt_logging.setup_logging(level="DEBUG", log_dir=log_dir, force_json=True)
+
+        ctx = _build_ctx(
+            conn=conn,
+            client=client,
+            cfg=cfg,
+            spawn=lambda coro: coro.close() if hasattr(coro, "close") else None,
+        )
+        msg = _slash_message(
+            "/run ZXTL-1234", sender_id=88888, chat_id=fake_tg.chat_id
+        )
+        await rt_dispatcher.dispatch(msg, ctx)
+
+        import json
+
+        events = [
+            json.loads(line)
+            for line in (log_dir / "audit.log").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        # Should produce slash_command_rejected with reason=unauthorized
+        # (distinct from telegram_unauthorized for non-slash unauth scans).
+        assert any(
+            e.get("event_type") == "slash_command_rejected"
+            and e.get("reason") == "unauthorized"
+            for e in events
+        )
+        assert conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 0

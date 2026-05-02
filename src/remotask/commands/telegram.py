@@ -163,6 +163,13 @@ def status(json_out: bool = typer.Option(False, "--json", help="Emit machine-rea
     typer.echo(f"degraded:        {'yes' if st.degraded else 'no'}")
     typer.echo(f"active sessions: {st.active_sessions}")
     typer.echo(f"whitelist size:  {st.whitelist_size}")
+    # 004: commands registration line.
+    if st.commands_registered:
+        typer.echo(
+            f"commands:        registered (last: {_format_iso(st.commands_registered_at)})"
+        )
+    else:
+        typer.echo("commands:        not registered (will retry on next restart)")
 
 
 # ---- formatting helpers ---------------------------------------------------

@@ -111,3 +111,107 @@ class TestMatchTerminationCommand:
         from remotask.telegram.parser import match_termination_command
 
         assert match_termination_command("") is None
+
+
+def _slash_msg(
+    text: str,
+    *,
+    sender_id: int = 99001,
+    chat_id: int = -1000000000001,
+    message_id: int = 1,
+    message_thread_id: int | None = None,
+    cmd_length: int | None = None,
+) -> dict:
+    """Construct a Telegram message dict with a bot_command entity at offset 0."""
+    if cmd_length is None:
+        # Default: command is the first whitespace-delimited token.
+        first = text.split(" ", 1)[0]
+        cmd_length = len(first)
+    msg = {
+        "message_id": message_id,
+        "from": {"id": sender_id, "is_bot": False, "first_name": "tester"},
+        "chat": {"id": chat_id, "type": "supergroup"},
+        "date": 1746115200,
+        "text": text,
+        "entities": [{"type": "bot_command", "offset": 0, "length": cmd_length}],
+    }
+    if message_thread_id is not None:
+        msg["message_thread_id"] = message_thread_id
+    return msg
+
+
+class TestMatchSlashCommand:
+    """004 slash-command parser."""
+
+    def test_run_with_no_args(self) -> None:
+        from remotask.telegram.parser import match_slash_command
+
+        m = match_slash_command(_slash_msg("/run"))
+        assert m is not None
+        assert m.name == "run"
+        assert m.args_text == ""
+
+    def test_run_with_args(self) -> None:
+        from remotask.telegram.parser import match_slash_command
+
+        m = match_slash_command(_slash_msg("/run ZXTL-1234 add tests"))
+        assert m is not None
+        assert m.name == "run"
+        assert m.args_text == "ZXTL-1234 add tests"
+
+    def test_done_in_topic(self) -> None:
+        from remotask.telegram.parser import match_slash_command
+
+        m = match_slash_command(_slash_msg("/done", message_thread_id=42))
+        assert m is not None
+        assert m.name == "done"
+        assert m.message_thread_id == 42
+
+    def test_strips_at_botname_suffix(self) -> None:
+        from remotask.telegram.parser import match_slash_command
+
+        msg = _slash_msg("/run@curious_claude_notification_bot ZXTL-1234")
+        # Recompute the entity length to include the @<botname> portion.
+        msg["entities"][0]["length"] = len("/run@curious_claude_notification_bot")
+        m = match_slash_command(
+            msg, bot_username="curious_claude_notification_bot"
+        )
+        assert m is not None
+        assert m.name == "run"
+        assert m.args_text == "ZXTL-1234"
+
+    def test_rejects_other_bot_suffix(self) -> None:
+        from remotask.telegram.parser import match_slash_command
+
+        msg = _slash_msg("/run@some_other_bot ZXTL-1234")
+        msg["entities"][0]["length"] = len("/run@some_other_bot")
+        m = match_slash_command(msg, bot_username="curious_claude_notification_bot")
+        assert m is None
+
+    def test_no_entity_returns_none(self) -> None:
+        from remotask.telegram.parser import match_slash_command
+
+        msg = _slash_msg("/run ZXTL-1234")
+        msg["entities"] = []
+        assert match_slash_command(msg) is None
+
+    def test_entity_at_non_zero_offset_returns_none(self) -> None:
+        from remotask.telegram.parser import match_slash_command
+
+        msg = _slash_msg("/run ZXTL-1234")
+        msg["entities"] = [{"type": "bot_command", "offset": 4, "length": 5}]
+        assert match_slash_command(msg) is None
+
+    def test_strips_leading_whitespace_from_args(self) -> None:
+        from remotask.telegram.parser import match_slash_command
+
+        m = match_slash_command(_slash_msg("/run    ZXTL-1234"))
+        assert m is not None
+        assert m.args_text == "ZXTL-1234"
+
+    def test_case_insensitive_command_name(self) -> None:
+        from remotask.telegram.parser import match_slash_command
+
+        m = match_slash_command(_slash_msg("/RUN args"))
+        assert m is not None
+        assert m.name == "run"
