@@ -17,9 +17,11 @@ day one.
 from __future__ import annotations
 
 import asyncio
+import re as _re
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -29,9 +31,12 @@ from remotask.core import config as rt_config
 from remotask.core import db as core_db
 from remotask.core import projects as rt_projects
 from remotask.daemon import audit, sessions, topic, worker
+from remotask.telegram import commands as rt_commands
 from remotask.telegram.client import TelegramAPIError, TelegramClient
 from remotask.telegram.parser import (
+    SlashCommandInvocation,
     extract_first_issue_key,
+    match_slash_command,
     match_termination_command,
     split_prefix,
 )
@@ -61,6 +66,10 @@ class DispatchContext:
     is_operator_stop_in_flight: Callable[[str], bool] | None = None
     worker_pid_for_session: Callable[[str], int | None] | None = None
     register_worker_pid: Callable[[str, int], None] | None = None
+    # 004: bot username (without @) used to strip ``@<botname>`` suffix from
+    # slash commands. None disables suffix matching; suffix-less commands
+    # still work.
+    bot_username: str | None = None
 
 
 async def dispatch(message: dict[str, Any], ctx: DispatchContext) -> None:
@@ -82,6 +91,24 @@ async def dispatch(message: dict[str, Any], ctx: DispatchContext) -> None:
 
     # ---- whitelist gate (FR-002, FR-003) ---------------------------------
     if sender not in ctx.cfg.telegram.allowed_user_ids:
+        # 004: distinguish unauthorised slash commands so the audit log can
+        # separate "someone is trying to drive my bot via the menu" from the
+        # plain-text scanning case.
+        slash = match_slash_command(message, bot_username=ctx.bot_username)
+        if slash is not None:
+            audit.log_unbound_event(
+                audit.EV_SLASH_COMMAND_REJECTED,
+                {
+                    "reason": "unauthorized",
+                    "command": slash.name,
+                    "sender_id": sender,
+                    "chat_id": chat,
+                    "message_id": msg_id,
+                    "message_thread_id": thread_id,
+                    "args_text_truncated": slash.args_text[:64],
+                },
+            )
+            return
         # 003: distinguish unauthorised termination attempts from generic
         # unauthorised messages so audit can separate "scanning" from "trying
         # to abort someone else's session".
@@ -104,6 +131,14 @@ async def dispatch(message: dict[str, Any], ctx: DispatchContext) -> None:
             audit.EV_TELEGRAM_UNAUTHORIZED,
             {"sender_id": sender, "chat_id": chat, "message_id": msg_id},
         )
+        return
+
+    # ---- slash-command branch (004 / US1) --------------------------------
+    # Runs *before* 003's termination grammar and 002's issue-key path so a
+    # slash command never falls through to plain-text routing.
+    slash = match_slash_command(message, bot_username=ctx.bot_username)
+    if slash is not None:
+        await _handle_slash_command(slash, ctx)
         return
 
     # ---- termination branch (003 / US2) -----------------------------------
@@ -502,3 +537,439 @@ async def _accept_trigger(
         is_operator_stop_in_flight=_is_op_stop_in_flight,
     )
     ctx.spawn_worker_task(coro)
+
+
+# ===========================================================================
+# 004 — Slash-command handlers
+# ===========================================================================
+
+
+async def _handle_slash_command(
+    invocation: SlashCommandInvocation, ctx: DispatchContext
+) -> None:
+    """Route an authorised slash-command invocation to its dedicated handler."""
+    cmd = rt_commands.lookup(invocation.name)
+    if cmd is None:
+        audit.log_unbound_event(
+            audit.EV_SLASH_COMMAND_REJECTED,
+            {
+                "reason": "unknown_command",
+                "command": invocation.name,
+                "sender_id": invocation.sender_id,
+                "chat_id": invocation.chat_id,
+                "message_id": invocation.message_id,
+                "message_thread_id": invocation.message_thread_id,
+                "args_text_truncated": invocation.args_text[:64],
+            },
+        )
+        return
+
+    if cmd.requires_args and not invocation.args_text.strip():
+        # Reply in the chat the command came from.
+        await _reply_to_invocation(
+            ctx, invocation, text=topic.TPL_RUN_USAGE_HINT
+        )
+        audit.log_unbound_event(
+            audit.EV_SLASH_COMMAND_REJECTED,
+            {
+                "reason": "empty_args",
+                "command": invocation.name,
+                "sender_id": invocation.sender_id,
+                "chat_id": invocation.chat_id,
+                "message_id": invocation.message_id,
+                "message_thread_id": invocation.message_thread_id,
+                "args_text_truncated": "",
+            },
+        )
+        return
+
+    if cmd.requires_topic and invocation.message_thread_id is None:
+        # /done in main chat → silent reject + audit (clarification Q2).
+        audit.log_unbound_event(
+            audit.EV_SLASH_COMMAND_REJECTED,
+            {
+                "reason": "main_chat_done",
+                "command": invocation.name,
+                "sender_id": invocation.sender_id,
+                "chat_id": invocation.chat_id,
+                "message_id": invocation.message_id,
+                "message_thread_id": None,
+                "args_text_truncated": invocation.args_text[:64],
+            },
+        )
+        return
+
+    if invocation.name == "run":
+        await _handle_slash_run(invocation, ctx)
+    elif invocation.name == "done":
+        await _handle_slash_done(invocation, ctx)
+    elif invocation.name == "status":
+        await _handle_slash_status(invocation, ctx)
+    # Unknown names already short-circuited above.
+
+
+async def _reply_to_invocation(
+    ctx: DispatchContext, invocation: SlashCommandInvocation, *, text: str
+) -> None:
+    """Post ``text`` back to the chat-of-origin (topic if present, else main)."""
+    if invocation.message_thread_id is not None:
+        await topic.post_to_topic(
+            ctx.client,
+            chat_id=invocation.chat_id,
+            topic_id=invocation.message_thread_id,
+            text=text,
+        )
+    else:
+        await topic.post_to_main_chat(ctx.client, chat_id=invocation.chat_id, text=text)
+
+
+async def _handle_slash_run(
+    invocation: SlashCommandInvocation, ctx: DispatchContext
+) -> None:
+    """Route ``/run <args>`` to a session.
+
+    Two paths: (a) args lead with a Jira-key (`PREFIX-NNN`) → reuse 002's
+    accept-trigger pipeline against that prefix; (b) args are free-text →
+    fall back to ``cfg.agent.default_project_jira_key`` (US4 — implemented
+    in T025; T013 stubs free-text as ``no_default_project`` reject).
+    """
+    args = invocation.args_text.strip()
+    # Args validity already checked in _handle_slash_command (requires_args).
+    parts = args.split(None, 1)
+    first_token = parts[0]
+    rest = parts[1] if len(parts) > 1 else ""
+
+    issue_key_match = extract_first_issue_key(first_token)
+    if issue_key_match is not None and issue_key_match == first_token:
+        # Path (a): Jira-key trigger. Use the existing accept-trigger flow.
+        prefix = split_prefix(issue_key_match)
+        project = rt_projects.by_prefix(ctx.conn, prefix)
+        if project is None:
+            registered = rt_projects.list_registered_prefixes(ctx.conn)
+            await _reply_to_invocation(
+                ctx,
+                invocation,
+                text=topic.TPL_UNKNOWN_PREFIX.format(
+                    prefix=prefix,
+                    prefixes=", ".join(registered) if registered else "(none)",
+                ),
+            )
+            audit.log_unbound_event(
+                audit.EV_TELEGRAM_UNKNOWN_PREFIX,
+                {
+                    "prefix": prefix,
+                    "key": issue_key_match,
+                    "registered_prefixes": registered,
+                    "sender_id": invocation.sender_id,
+                    "chat_id": invocation.chat_id,
+                    "message_id": invocation.message_id,
+                },
+            )
+            return
+
+        await _accept_via_slash(
+            invocation=invocation,
+            issue_key=issue_key_match,
+            trigger_text=rest,
+            project=project,
+            ctx=ctx,
+        )
+        return
+
+    # Path (b): free-text fallback. Filled in by US4 / T025. T013 (US1) stubs
+    # this as a clear "default project not configured" reject so the menu
+    # surface is at least honest while US4 is in flight.
+    await _handle_slash_run_free_text(invocation, ctx, args=args)
+
+
+async def _handle_slash_run_free_text(
+    invocation: SlashCommandInvocation, ctx: DispatchContext, *, args: str
+) -> None:
+    """Free-text /run path. Resolves agent.default_project_jira_key.
+
+    When unset/unregistered → reply with a setup hint and reject.
+    When set → synthesise a topic-id and run against the default project.
+    """
+    default_key = (ctx.cfg.agent.default_project_jira_key or "").strip()
+    project = (
+        rt_projects.by_prefix(ctx.conn, default_key) if default_key else None
+    )
+    if project is None:
+        await _reply_to_invocation(
+            ctx, invocation, text=topic.TPL_RUN_NO_DEFAULT_PROJECT
+        )
+        audit.log_unbound_event(
+            audit.EV_SLASH_COMMAND_REJECTED,
+            {
+                "reason": "no_default_project",
+                "command": "run",
+                "sender_id": invocation.sender_id,
+                "chat_id": invocation.chat_id,
+                "message_id": invocation.message_id,
+                "message_thread_id": invocation.message_thread_id,
+                "args_text_truncated": args[:64],
+            },
+        )
+        return
+
+    synthetic_id = synthesize_run_topic_id(args)
+    await _accept_via_slash(
+        invocation=invocation,
+        issue_key=synthetic_id,
+        trigger_text=args,
+        project=project,
+        ctx=ctx,
+    )
+
+
+def synthesize_run_topic_id(args_text: str, *, now: datetime | None = None) -> str:
+    """Produce ``run-<YYYY-MM-DD-HH-MM>-<slug>-<6-hex>`` per data-model.md."""
+    import secrets as _secrets
+    from datetime import UTC
+
+    when = now if now is not None else datetime.now(UTC)
+    timestamp = when.strftime("%Y-%m-%d-%H-%M")
+    slug_raw = _re.sub(r"[^a-z0-9]+", "-", args_text.lower()).strip("-")
+    slug_raw = slug_raw[:20].rstrip("-") or "untitled"
+    return f"run-{timestamp}-{slug_raw}-{_secrets.token_hex(3)}"
+
+
+async def _accept_via_slash(
+    *,
+    invocation: SlashCommandInvocation,
+    issue_key: str,
+    trigger_text: str,
+    project: rt_projects.ProjectRow,
+    ctx: DispatchContext,
+) -> None:
+    """Slash-driven equivalent of the 002 accept-trigger flow.
+
+    Records both the message-received audit (for parity with the plain-text
+    path) and a new ``slash_command_received`` event tied to the new session.
+    """
+    # Same-issue concurrency check (002 FR-010).
+    existing = core_db.get_active_session_for_issue(ctx.conn, issue_key)
+    if existing is not None:
+        await _reply_to_invocation(
+            ctx,
+            invocation,
+            text=topic.TPL_ALREADY_IN_FLIGHT.format(
+                key=issue_key, topic_id=existing["topic_id"] or 0
+            ),
+        )
+        audit.record_event(
+            ctx.conn,
+            session_id=existing["id"],
+            type=audit.EV_TELEGRAM_ALREADY_IN_FLIGHT,
+            payload={
+                "existing_session_id": existing["id"],
+                "existing_topic_id": existing["topic_id"],
+                "incoming_message_id": invocation.message_id,
+                "incoming_sender_id": invocation.sender_id,
+            },
+        )
+        ctx.conn.commit()
+        return
+
+    # max_concurrent cap.
+    cap = ctx.cfg.agent.max_concurrent
+    if core_db.count_active_sessions(ctx.conn) >= cap:
+        await _reply_to_invocation(
+            ctx, invocation, text=topic.TPL_CONCURRENCY_CAP.format(cap=cap)
+        )
+        return
+
+    # Reuse the existing 002 accept-trigger flow with the slash-supplied data.
+    await _accept_trigger(
+        message_text=trigger_text,
+        issue_key=issue_key,
+        sender_id=invocation.sender_id,
+        chat_id=invocation.chat_id,
+        message_id=invocation.message_id,
+        project=project,
+        ctx=ctx,
+    )
+
+    # Record the slash-command-received event tied to the (now-inserted) session.
+    new_session = core_db.get_active_session_for_issue(ctx.conn, issue_key)
+    if new_session is not None:
+        audit.record_event(
+            ctx.conn,
+            session_id=new_session["id"],
+            type=audit.EV_SLASH_COMMAND_RECEIVED,
+            payload={
+                "command": invocation.name,
+                "args_text_truncated": invocation.args_text[:64],
+                "sender_id": invocation.sender_id,
+                "message_id": invocation.message_id,
+                "chat_id": invocation.chat_id,
+                "message_thread_id": invocation.message_thread_id,
+            },
+        )
+        ctx.conn.commit()
+
+
+async def _handle_slash_done(
+    invocation: SlashCommandInvocation, ctx: DispatchContext
+) -> None:
+    """Equivalent of 003's plain-text termination, scoped to the slash form.
+
+    Reuses ``_handle_termination`` (003) so the SIGUSR1 / grace ladder /
+    audit trail is identical. Adds an ``EV_SLASH_COMMAND_RECEIVED`` event in
+    addition to 003's ``telegram_termination_received`` so the audit log can
+    distinguish slash vs plain-text invocations.
+    """
+    # message_thread_id non-None already enforced by _handle_slash_command.
+    assert invocation.message_thread_id is not None
+    # Resolve session first so we can audit before signalling.
+    row = core_db.get_active_session_by_topic(
+        ctx.conn, invocation.message_thread_id
+    )
+    if row is not None:
+        audit.record_event(
+            ctx.conn,
+            session_id=str(row["id"]),
+            type=audit.EV_SLASH_COMMAND_RECEIVED,
+            payload={
+                "command": invocation.name,
+                "args_text_truncated": "",
+                "sender_id": invocation.sender_id,
+                "message_id": invocation.message_id,
+                "chat_id": invocation.chat_id,
+                "message_thread_id": invocation.message_thread_id,
+            },
+        )
+        ctx.conn.commit()
+
+    await _handle_termination(
+        ctx=ctx,
+        command=invocation.name,
+        sender_id=invocation.sender_id,
+        chat_id=invocation.chat_id,
+        message_id=invocation.message_id,
+        topic_id=invocation.message_thread_id,
+    )
+
+
+async def _handle_slash_status(
+    invocation: SlashCommandInvocation, ctx: DispatchContext
+) -> None:
+    """Reply with the active-session list (main chat) or topic-detail."""
+    if invocation.message_thread_id is None:
+        await _slash_status_main_chat(invocation, ctx)
+    else:
+        await _slash_status_topic_detail(invocation, ctx)
+
+
+async def _slash_status_main_chat(
+    invocation: SlashCommandInvocation, ctx: DispatchContext
+) -> None:
+    cur = ctx.conn.cursor()
+    cur.row_factory = sqlite3.Row
+    cur.execute(
+        f"SELECT id, issue_key, status, started_at, log_path, enqueued_at "
+        f"FROM sessions WHERE status IN ({core_db._NON_TERMINAL_PLACEHOLDERS}) "
+        f"ORDER BY enqueued_at DESC LIMIT 11",
+        core_db.NON_TERMINAL_STATES,
+    )
+    rows = cur.fetchall()
+    if not rows:
+        await topic.post_to_main_chat(
+            ctx.client, chat_id=invocation.chat_id, text=topic.TPL_STATUS_NO_ACTIVE
+        )
+        return
+
+    truncated = len(rows) > 10
+    visible = rows[:10]
+    lines = [topic.TPL_STATUS_LIST_HEADER.format(count=len(visible))]
+    for row in visible:
+        iter_str = _format_iteration_for_log(row["log_path"])
+        age = _format_age(int(row["enqueued_at"]))
+        lines.append(
+            topic.TPL_STATUS_LIST_LINE.format(
+                key=row["issue_key"],
+                status=row["status"],
+                iter=iter_str,
+                age=age,
+            )
+        )
+    if truncated:
+        lines.append(topic.TPL_STATUS_TRUNCATED.format(n=len(rows) - 10))
+    lines.append("")
+    lines.append(topic.TPL_STATUS_LIST_HINT)
+    await topic.post_to_main_chat(
+        ctx.client, chat_id=invocation.chat_id, text="\n".join(lines)
+    )
+
+
+async def _slash_status_topic_detail(
+    invocation: SlashCommandInvocation, ctx: DispatchContext
+) -> None:
+    assert invocation.message_thread_id is not None
+    row = core_db.get_active_session_by_topic(
+        ctx.conn, invocation.message_thread_id
+    )
+    if row is None:
+        await topic.post_to_topic(
+            ctx.client,
+            chat_id=invocation.chat_id,
+            topic_id=invocation.message_thread_id,
+            text=topic.TPL_STATUS_NO_TOPIC_SESSION,
+        )
+        return
+
+    iter_str = _format_iteration_for_log(row["log_path"])
+    age = _format_age(int(row["enqueued_at"]))
+    detail = topic.TPL_STATUS_DETAIL.format(
+        key=row["issue_key"],
+        status=row["status"],
+        iteration=iter_str,
+        age=age,
+        worktree=row["worktree_path"] or "(not yet created)",
+    )
+    await topic.post_to_topic(
+        ctx.client,
+        chat_id=invocation.chat_id,
+        topic_id=invocation.message_thread_id,
+        text=detail,
+    )
+
+
+# ----- helpers ------------------------------------------------------------
+
+
+_PROGRESS_LINE_RE = _re.compile(r"^PROGRESS (\d+)/(\d+) (\S+)\s*$")
+
+
+def _format_iteration_for_log(log_path: str | None) -> str:
+    """Read the most recent PROGRESS line from a session log; render `i/N` or `—`."""
+    if not log_path:
+        return "—"
+    try:
+        with Path(log_path).open("rb") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            # Read last 4 KB; placeholder workload's lines are ~50 bytes each.
+            f.seek(max(0, size - 4096))
+            tail = f.read().decode(errors="replace")
+    except OSError:
+        return "—"
+    last: str | None = None
+    for line in tail.splitlines():
+        m = _PROGRESS_LINE_RE.match(line)
+        if m is not None:
+            last = f"iteration {m.group(1)}/{m.group(2)}"
+    return last or "—"
+
+
+def _format_age(epoch_seconds: int) -> str:
+    import time as _time
+
+    delta = max(0, int(_time.time() - epoch_seconds))
+    if delta < 60:
+        return f"{delta}s ago"
+    if delta < 3600:
+        return f"{delta // 60} min ago"
+    if delta < 86400:
+        return f"{delta // 3600} h ago"
+    return f"{delta // 86400} d ago"

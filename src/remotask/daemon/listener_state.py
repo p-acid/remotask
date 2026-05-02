@@ -30,6 +30,12 @@ class ListenerState:
     whitelist_size: int = 0
     degraded: bool = False
     last_update_id: int = 0
+    # 004: setMyCommands registration state. ``commands_registered`` is True
+    # after the first successful setMyCommands of the listener's lifetime,
+    # False if the most recent attempt failed. ``commands_registered_at`` is
+    # the epoch-seconds timestamp of the last success (0 = never).
+    commands_registered: bool = False
+    commands_registered_at: float = 0.0
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), separators=(",", ":"))

@@ -49,6 +49,19 @@ class AgentConfig(BaseModel):
     # to the SIGTERM/SIGKILL ladder from 002. Short by default — the demo
     # placeholder only needs to flush one stdout line.
     operator_stop_grace_seconds: int = Field(default=5, ge=1, le=30)
+    # 004 — Default project jira_key used when a `/run` command's args do not
+    # start with a Jira key. Empty/unset disables the free-text fallback.
+    default_project_jira_key: str = ""
+
+    @field_validator("default_project_jira_key")
+    @classmethod
+    def _validate_default_project(cls, v: str) -> str:
+        if v and not re.fullmatch(r"[A-Z]{2,10}", v):
+            raise ValueError(
+                "agent.default_project_jira_key must match [A-Z]{2,10} (e.g. ZXTL) "
+                "or be empty to disable the free-text fallback"
+            )
+        return v
 
 
 class DaemonConfig(BaseModel):

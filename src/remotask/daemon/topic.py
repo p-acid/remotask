@@ -27,6 +27,32 @@ TPL_FINAL: Final = "Status: final iteration {i} ({reason})"
 TPL_OPERATOR_STOPPED: Final = "Session stopped by operator."
 TPL_OPERATOR_STOPPED_FORCED: Final = "Session force-stopped by operator (grace window exceeded)."
 
+# ---- 004 templates: slash-command surface ---------------------------------
+
+TPL_RUN_USAGE_HINT: Final = (
+    "Usage: /run <PREFIX>-<NUM>  or  /run <free text> "
+    "(requires agent.default_project_jira_key)"
+)
+TPL_RUN_NO_DEFAULT_PROJECT: Final = (
+    "No default project configured. "
+    "Set agent.default_project_jira_key in config.toml or use /run <PREFIX>-<NUM>."
+)
+TPL_STATUS_LIST_HEADER: Final = "Active sessions ({count}):"
+TPL_STATUS_LIST_LINE: Final = "{key}    {status}    {iter}    {age}"
+TPL_STATUS_TRUNCATED: Final = "+ {n} more (truncated)"
+TPL_STATUS_LIST_HINT: Final = (
+    "Type /status inside a topic for that session's detail."
+)
+TPL_STATUS_NO_ACTIVE: Final = "No active sessions."
+TPL_STATUS_DETAIL: Final = (
+    "{key}\n"
+    "status:    {status}\n"
+    "iteration: {iteration}\n"
+    "started:   {age}\n"
+    "worktree:  {worktree}"
+)
+TPL_STATUS_NO_TOPIC_SESSION: Final = "No active session in this topic."
+
 # ---- main-chat-bound templates (sent in the group, not in a topic) -------
 
 TPL_UNKNOWN_PREFIX: Final = (

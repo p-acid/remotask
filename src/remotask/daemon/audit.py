@@ -31,6 +31,7 @@ EV_TELEGRAM_MESSAGE_RECEIVED: Final = "telegram_message_received"
 EV_TELEGRAM_TOPIC_CREATE_FAILED: Final = "telegram_topic_create_failed"
 EV_TELEGRAM_ALREADY_IN_FLIGHT: Final = "telegram_already_in_flight"
 EV_TELEGRAM_TERMINATION_RECEIVED: Final = "telegram_termination_received"
+EV_SLASH_COMMAND_RECEIVED: Final = "slash_command_received"
 
 # ---- unbound event types (emitted to the audit logger only) ---------------
 
@@ -38,6 +39,9 @@ EV_TELEGRAM_UNAUTHORIZED: Final = "telegram_unauthorized"
 EV_TELEGRAM_UNKNOWN_PREFIX: Final = "telegram_unknown_prefix"
 EV_LISTENER_DEGRADED: Final = "listener_degraded"
 EV_TELEGRAM_TERMINATION_REJECTED: Final = "telegram_termination_rejected"
+EV_SLASH_COMMAND_REJECTED: Final = "slash_command_rejected"
+EV_COMMANDS_REGISTERED: Final = "commands_registered"
+EV_COMMANDS_REGISTRATION_FAILED: Final = "commands_registration_failed"
 
 
 def record_event(
