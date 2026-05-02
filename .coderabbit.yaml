@@ -17,5 +17,7 @@ reviews:
     - "!.specify/**"
     - "!CLAUDE.md"
     - "!PRD.md"
+    - "!ARCHITECTURE.md"
+    - "!ARD.md"
 chat:
   auto_reply: true
