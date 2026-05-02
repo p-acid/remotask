@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit 설정 — repo 단위 리뷰 동작 제어.
+# https://docs.coderabbit.ai/getting-started/configure-coderabbit/
+language: "ko-KR"
+tone_instructions: "Always respond in Korean (한국어). Use technical vocabulary verbatim in English when it improves precision (e.g. forum topic, dispatcher, audit, idempotency)."
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+chat:
+  auto_reply: true
