@@ -1,36 +1,40 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: (initial) → 1.0.0
-Bump rationale: Initial ratification of project constitution.
+Version change: 1.0.0 → 1.1.0
+Bump rationale: Principle III ("Strict Session Isolation") relaxed to remove
+  the Telegram-topic dimension from the constitutional invariant. The 1:1:1:1
+  mapping becomes 1:1:1 (issue = worktree = branch); the Telegram channel
+  correspondence (DM thread, forum topic, future surfaces) moves to the
+  presentation layer. MINOR per the project's amendment policy because no
+  principle is removed and the change is additive guidance (the relaxation
+  *expands* the set of valid implementations rather than narrowing it).
 
 Modified principles:
-  - N/A (initial version)
+  - III. Strict Session Isolation: invariant changed from
+    "1 Jira issue = 1 git worktree = 1 git branch = 1 Telegram forum topic"
+    to "1 Jira issue = 1 git worktree = 1 git branch". Telegram-channel
+    mapping is now presentation-layer.
 
 Added sections:
-  - Core Principles (7): Jira as SoT, Daemon-Centric Architecture,
-    Strict Session Isolation, MVP-First Incremental Hardening,
-    Spec-Driven Development, Security by Default,
-    Observability & Auditability
-  - Architecture & Technology Constraints
-  - Development Workflow
-  - Governance
+  - None.
 
 Removed sections:
-  - N/A (initial version)
+  - None.
 
 Templates requiring updates:
-  - ✅ .specify/memory/constitution.md          (this file, rewritten)
-  - ✅ .specify/templates/plan-template.md       (Constitution Check populated
-       with principle-derived gates I-VII)
+  - ✅ .specify/memory/constitution.md          (this file, amended)
+  - ✅ .specify/templates/plan-template.md       (Constitution Check III line
+       updated to drop the Telegram-topic dimension)
   - ✅ .specify/templates/spec-template.md       (no constitution-specific
        sections; alignment OK)
   - ✅ .specify/templates/tasks-template.md      (no constitution-specific
        sections; alignment OK)
   - ✅ CLAUDE.md                                 (no principle references;
        generic guidance only)
-  - ✅ PRD.md                                    (already aligns; principles
-       derived from its decision log D1-D18)
+  - ✅ PRD.md                                    (still aligns; the §C "1
+       issue = 1 topic" decision is a presentation policy and is the part
+       being relaxed by 005)
 
 Follow-up TODOs:
   - None.
@@ -64,14 +68,15 @@ Jira는 모든 task·이슈의 단일 진실 원천이다.
 
 ### III. Strict Session Isolation (NON-NEGOTIABLE)
 
-세션 격리는 1:1:1:1 매핑을 강제한다.
+세션 격리는 **1:1:1 매핑**을 강제한다 (presentation 채널은 별도 layer).
 
-- 1 Jira issue = 1 git worktree = 1 git branch = 1 Telegram forum topic
+- **1 Jira issue = 1 git worktree = 1 git branch.**
 - 동시 실행되는 세션은 파일시스템·git 컨텍스트가 완전히 격리된다.
 - 공유 자원(lockfile, DB 마이그레이션, 패키지 설치)에 영향을 주는 작업은 advisory lock으로 직렬화한다.
 - 동일 issue 재트리거는 기존 세션이 active이면 거부하거나 명시적 takeover만 허용한다.
+- **Telegram 채널 매핑**(1:1 DM 스레드, 그룹 forum topic, 향후 web UI 등)은 presentation-layer 결정이며 헌법적 격리 모델의 일부가 아니다. 단, 채택된 매핑은 feature spec에 명시되어야 하고 audit 추적이 가능해야 한다.
 
-**근거**: 무인 실행 환경에서 컨텍스트 누수·작업 손실은 즉시 신뢰를 무너뜨린다. 단일 동시 실행이라도 격리 모델은 처음부터 강제되어야 한다.
+**근거**: 무인 실행 환경에서 컨텍스트 누수·작업 손실은 즉시 신뢰를 무너뜨린다. 격리의 본질은 파일시스템·git 상태이며, Telegram 채널 매핑은 UX 결정이라 분리되어 진화할 수 있어야 한다(예: 002~004의 forum-topic 모델 → 005의 1:1 DM 모델 전환). 단일 동시 실행이라도 worktree·branch 격리는 처음부터 강제되어야 한다.
 
 ### IV. MVP-First, Incremental Hardening
 
@@ -210,4 +215,4 @@ Jira는 모든 task·이슈의 단일 진실 원천이다.
 - `CLAUDE.md` — AI agent 런타임 안내(spec-kit 워크플로우)
 - 충돌 시 우선순위: 이 헌법 > PRD > CLAUDE.md > 일반 문서
 
-**Version**: 1.0.0 | **Ratified**: 2026-05-01 | **Last Amended**: 2026-05-01
+**Version**: 1.1.0 | **Ratified**: 2026-05-01 | **Last Amended**: 2026-05-02

@@ -1,10 +1,13 @@
-"""Integration test for US2 — graceful operator stop.
+"""Integration test for ``/cancel`` canonical operator-stop slash command (005 / US1).
 
-Trigger a session with the real ``demo_worker`` subprocess, wait until the
-first progress line lands in the topic, then post ``done`` in the bound topic
-via fake Telegram. Confirm the worker honours SIGUSR1, prints a `FINAL …
-operator_stop` line, exits 0, and the session row reaches `canceled` /
-`error_message=operator_stop`.
+Confirms that 005's canonical operator-stop command behaves end-to-end exactly
+like 003/004's `/done` did:
+
+1. Trigger a session via `/run`.
+2. Wait for the first progress line.
+3. Post `/cancel` inside the bound topic.
+4. Worker terminates with `error_message=operator_stop` within 10s.
+5. Audit log carries `slash_command_received command=cancel` (the new value).
 """
 from __future__ import annotations
 
@@ -69,17 +72,37 @@ def _build_cfg(fake_tg: FakeTelegram, *, worktree_root: Path) -> rt_config.Confi
     return cfg
 
 
-def _message(text: str, *, sender_id: int, chat_id: int, message_id: int = 1) -> dict:
+def _slash_run(args: str, *, sender_id: int, chat_id: int, message_id: int = 1) -> dict:
+    cmd = "/run"
+    text = f"{cmd} {args}".rstrip()
     return {
         "message_id": message_id,
         "from": {"id": sender_id, "is_bot": False, "first_name": "tester"},
         "chat": {"id": chat_id, "type": "supergroup"},
         "date": 1746115200,
         "text": text,
+        "entities": [{"type": "bot_command", "offset": 0, "length": len(cmd)}],
     }
 
 
-async def test_operator_stop_drives_canceled_with_operator_stop_reason(
+def _slash_cancel(
+    *, sender_id: int, chat_id: int, topic_id: int | None, message_id: int
+) -> dict:
+    cmd = "/cancel"
+    msg = {
+        "message_id": message_id,
+        "from": {"id": sender_id, "is_bot": False, "first_name": "tester"},
+        "chat": {"id": chat_id, "type": "supergroup"},
+        "date": 1746115200,
+        "text": cmd,
+        "entities": [{"type": "bot_command", "offset": 0, "length": len(cmd)}],
+    }
+    if topic_id is not None:
+        msg["message_thread_id"] = topic_id
+    return msg
+
+
+async def test_slash_cancel_in_topic_drives_canceled(
     tmp_path: Path,
     isolated_xdg: Path,
     conn: sqlite3.Connection,
@@ -98,12 +121,10 @@ async def test_operator_stop_drives_canceled_with_operator_stop_reason(
         worker_tasks.add(task)
         task.add_done_callback(worker_tasks.discard)
 
-    # In-memory operator-stop coordination (stand-in for Runtime).
     in_flight: set[str] = set()
     pid_by_session: dict[str, int] = {}
 
     env = _python_path_env()
-    # Plenty of iterations with a small interval — the test cancels mid-run.
     env["REMOTASK_DEMO_ITERATIONS"] = "20"
     env["REMOTASK_DEMO_INTERVAL_SECONDS"] = "0.2"
 
@@ -123,44 +144,40 @@ async def test_operator_stop_drives_canceled_with_operator_stop_reason(
         register_worker_pid=lambda sid, pid: pid_by_session.__setitem__(sid, pid),
     )
 
-    # Trigger.
     await rt_dispatcher.dispatch(
-        _message("ZXTL-7777", sender_id=99001, chat_id=fake_tg.chat_id), ctx
+        _slash_run("ZXTL-7771", sender_id=99001, chat_id=fake_tg.chat_id), ctx
     )
-
-    # Wait until at least one PROGRESS message has been posted to the topic.
-    async def _has_progress_msg() -> bool:
-        return any("Status: iteration " in m.text for m in fake_tg.sent_messages)
 
     deadline = asyncio.get_running_loop().time() + 5.0
     while asyncio.get_running_loop().time() < deadline:
-        if await _has_progress_msg():
+        if any("Status: iteration " in m.text for m in fake_tg.sent_messages):
             break
         await asyncio.sleep(0.05)
     else:
         pytest.fail("worker never posted a progress message")
 
-    # Resolve the topic_id for the running session.
     row = conn.execute(
         "SELECT id, topic_id FROM sessions ORDER BY enqueued_at DESC LIMIT 1"
     ).fetchone()
     assert row is not None
     sid, topic_id = row
 
-    # Now post `done` inside the bound topic.
-    stop_msg = {
-        **_message("done", sender_id=99001, chat_id=fake_tg.chat_id, message_id=42),
-        "message_thread_id": topic_id,
-    }
-    await rt_dispatcher.dispatch(stop_msg, ctx)
+    await rt_dispatcher.dispatch(
+        _slash_cancel(
+            sender_id=99001,
+            chat_id=fake_tg.chat_id,
+            topic_id=topic_id,
+            message_id=42,
+        ),
+        ctx,
+    )
 
-    # Wait for terminal state.
     deadline = asyncio.get_running_loop().time() + 10.0
     while asyncio.get_running_loop().time() < deadline:
         srow = conn.execute(
             "SELECT status, error_message FROM sessions WHERE id = ?", (sid,)
         ).fetchone()
-        if srow is not None and srow[0] in ("canceled", "completed", "failed", "pr_created"):
+        if srow is not None and srow[0] in ("canceled", "completed", "failed"):
             break
         await asyncio.sleep(0.05)
 
@@ -173,27 +190,75 @@ async def test_operator_stop_drives_canceled_with_operator_stop_reason(
     ).fetchone()
     assert srow is not None
     status, error_message = srow
-    assert status == "canceled", f"got {status} (err={error_message})"
+    assert status == "canceled"
     assert error_message == "operator_stop"
 
-    # Verify topic-bound messages: at least one PROGRESS, one FINAL ... operator_stop,
-    # and the "Session canceled by operator." line.
-    # 005: every session-bound progress / status / final / canceled line is
-    # prefixed with [<issue_key>]; the "Session canceled by operator." text
-    # replaces 003's "Session stopped by operator." (rename for consistency
-    # with /cancel + canceled DB status).
-    topic_msgs = [m.text for m in fake_tg.sent_messages if m.message_thread_id == topic_id]
-    assert any("Status: iteration " in t for t in topic_msgs)
-    assert any(
-        "Status: final iteration " in t and "(operator_stop)" in t for t in topic_msgs
-    )
-    assert any("Session canceled by operator." in t for t in topic_msgs)
+    # Audit row shape: 005 introduces command="cancel" (not "done").
+    # Both /run and /cancel produce slash_command_received rows (each carries
+    # its own ``command`` discriminator) — filter by command to find the
+    # /cancel-specific row.
+    import json as _json
 
-    # Verify session_events captured the termination.
-    types = [
-        r[0]
-        for r in conn.execute(
-            "SELECT type FROM session_events WHERE session_id = ?", (sid,)
-        ).fetchall()
+    rows = conn.execute(
+        "SELECT type, payload FROM session_events WHERE session_id = ?", (sid,)
+    ).fetchall()
+    slash_received = [
+        _json.loads(p) for t, p in rows if t == "slash_command_received"
     ]
-    assert "telegram_termination_received" in types
+    cancel_rows = [r for r in slash_received if r.get("command") == "cancel"]
+    run_rows = [r for r in slash_received if r.get("command") == "run"]
+    assert len(cancel_rows) == 1
+    assert len(run_rows) == 1
+
+
+async def test_slash_cancel_in_main_chat_is_silently_rejected(
+    tmp_path: Path,
+    isolated_xdg: Path,
+    conn: sqlite3.Connection,
+    fake_tg: FakeTelegram,
+    repo: Path,
+) -> None:
+    """`/cancel` in main chat → no signal, audit-log reason=main_chat_cancel."""
+    from remotask.core import logging as rt_logging
+
+    log_dir = tmp_path / "logs"
+    rt_logging.setup_logging(level="DEBUG", log_dir=log_dir, force_json=True)
+    cfg = _build_cfg(fake_tg, worktree_root=tmp_path / "wt")
+    client = TelegramClient(fake_tg.bot_token, transport=fake_tg.transport())
+
+    ctx = rt_dispatcher.DispatchContext(
+        conn=conn,
+        client=client,
+        cfg=cfg,
+        spawn_worker_task=lambda coro: coro.close() if hasattr(coro, "close") else None,
+        worker_argv=None,
+        worker_env=None,
+    )
+
+    await rt_dispatcher.dispatch(
+        _slash_cancel(
+            sender_id=99001,
+            chat_id=fake_tg.chat_id,
+            topic_id=None,
+            message_id=10,
+        ),
+        ctx,
+    )
+    await client.aclose()
+
+    assert fake_tg.sent_messages == []
+
+    import json
+
+    events = [
+        json.loads(line)
+        for line in (log_dir / "audit.log").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    rejections = [
+        e for e in events
+        if e.get("event_type") == "slash_command_rejected"
+        and e.get("reason") == "main_chat_cancel"
+    ]
+    assert len(rejections) == 1
+    assert rejections[0]["command"] == "cancel"

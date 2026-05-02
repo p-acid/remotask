@@ -213,7 +213,8 @@ async def test_exit_nonzero_drives_failed_transition_with_reason(
     assert "kaboom" in (row[1] or "")
 
     topic_msgs = [m.text for m in fake_tg.sent_messages if m.message_thread_id == topic_id]
-    assert any(t.startswith("Session failed:") for t in topic_msgs)
+    # 005: session-bound failure messages are prefixed with [<issue_key>].
+    assert any("Session failed:" in t for t in topic_msgs)
     # ``kaboom`` should appear in the failure message (last stderr line).
     assert any("kaboom" in t for t in topic_msgs)
 

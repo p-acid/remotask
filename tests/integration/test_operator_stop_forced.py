@@ -179,4 +179,6 @@ async def test_unresponsive_worker_is_force_killed(
     assert error_message == "operator_stop_forced"
 
     topic_msgs = [m.text for m in fake_tg.sent_messages if m.message_thread_id == topic_id]
-    assert any("Session force-stopped by operator" in t for t in topic_msgs)
+    # 005: rename "force-stopped" → "force-canceled" for consistency with
+    # /cancel + canceled DB status; lines are also prefixed with [<issue_key>].
+    assert any("Session force-canceled by operator" in t for t in topic_msgs)

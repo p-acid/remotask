@@ -5,11 +5,15 @@ Adding or removing a command is intentionally a code change: the registered
 menu can never drift from what the dispatcher actually handles, and tests pin
 the shape so accidental drift is caught at PR time.
 
-Per ``contracts/set-my-commands.md`` (004) the curated set is exactly:
+Per ``specs/005-dm-channel/data-model.md`` the curated set is now:
 
 * ``/run``    — start a session
-* ``/done``   — graceful operator stop in the current topic
+* ``/cancel`` — cancel an active session (canonical operator-stop, 005)
 * ``/status`` — list active sessions or report current-topic state
+
+The deprecated ``/done`` is no longer advertised but still routes inbound
+through the dispatcher's deprecation-alias hook (data-model.md "Audit event
+taxonomy additions"). Removed in feature 006.
 """
 from __future__ import annotations
 
@@ -38,8 +42,8 @@ CURATED_COMMANDS: tuple[CuratedCommand, ...] = (
         requires_args=True,
     ),
     CuratedCommand(
-        name="done",
-        description="End the current session",
+        name="cancel",
+        description="Cancel an active session",
         requires_topic=True,
         requires_args=False,
     ),

@@ -41,7 +41,7 @@ or `[ ] PENDING`. All gates must be PASS or WAIVED before implementation.
   - Business logic and privileged operations live in the daemon.
   - All clients (CLI, Telegram bot, web) talk to the daemon via the HTTP API.
 - [ ] **III. Strict Session Isolation**
-  - Maintains 1 issue = 1 worktree = 1 branch = 1 Telegram topic mapping.
+  - Maintains 1 issue = 1 worktree = 1 branch (presentation-channel mapping is a separate layer; document the chosen Telegram-channel correspondence in the spec).
   - Shared resources (lockfiles, migrations, package installs) are guarded by advisory locks.
 - [ ] **IV. MVP-First, Incremental Hardening**
   - Change does not introduce out-of-phase features (e.g., web GUI, multi-session, external exposure during MVP).

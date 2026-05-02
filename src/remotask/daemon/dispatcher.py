@@ -70,6 +70,17 @@ class DispatchContext:
     # slash commands. None disables suffix matching; suffix-less commands
     # still work.
     bot_username: str | None = None
+    # 005: alias-deprecation idempotency callbacks (data-model.md). The
+    # dispatcher's alias hook checks ``has_alias_deprecation_warned`` before
+    # emitting; ``record_alias_deprecation_warned`` adds the
+    # ``(alias_token, session_id)`` pair after the WARNING fires. The
+    # ``clear_alias_deprecation_for_session`` callback is invoked when a
+    # session reaches a terminal state so the per-session set is cleaned
+    # up. None disables the hook (tests that don't care about deprecation
+    # idempotency leave these unset).
+    has_alias_deprecation_warned: Callable[[str, str], bool] | None = None
+    record_alias_deprecation_warned: Callable[[str, str], None] | None = None
+    clear_alias_deprecation_for_session: Callable[[str], None] | None = None
 
 
 async def dispatch(message: dict[str, Any], ctx: DispatchContext) -> None:
@@ -144,9 +155,22 @@ async def dispatch(message: dict[str, Any], ctx: DispatchContext) -> None:
     # ---- termination branch (003 / US2) -----------------------------------
     # Topic-only (clarification Q1): main-chat termination tokens fall through
     # and are silently ignored as casual chat by the issue-key path below.
+    # 005: plain-text aliases (done/stop/finish) emit a one-time deprecation
+    # WARNING per (alias_token, session_id) pair before the 003 ladder runs.
     if thread_id is not None:
         canonical = match_termination_command(text)
         if canonical is not None:
+            row = core_db.get_active_session_by_topic(ctx.conn, int(thread_id))
+            if row is not None:
+                _emit_alias_warning(
+                    ctx,
+                    alias_token=canonical,
+                    session_id=str(row["id"]),
+                    sender_id=sender,
+                    chat_id=chat,
+                    message_id=msg_id,
+                    message_thread_id=int(thread_id),
+                )
             await _handle_termination(
                 ctx=ctx,
                 command=canonical,
@@ -521,6 +545,7 @@ async def _accept_trigger(
         chat_id=chat_id,
         topic_id=forum.message_thread_id,
         new_status="starting",
+        issue_key=issue_key,
     )
 
     # Hand off to the worker. The runtime registers this as a background task
@@ -534,6 +559,17 @@ async def _accept_trigger(
             return False
         return ctx.is_operator_stop_in_flight(session_id)
 
+    def _on_terminal(sid: str) -> None:
+        if ctx.clear_alias_deprecation_for_session is not None:
+            try:
+                ctx.clear_alias_deprecation_for_session(sid)
+            except Exception as e:  # pragma: no cover — defensive
+                _log.warning(
+                    "dispatch.alias_cleanup_failed",
+                    session_id=sid,
+                    error=str(e),
+                )
+
     coro = worker.run_worker(
         spec,
         conn=ctx.conn,
@@ -542,6 +578,7 @@ async def _accept_trigger(
         topic_id=forum.message_thread_id,
         on_worker_started=_on_worker_started,
         is_operator_stop_in_flight=_is_op_stop_in_flight,
+        on_terminal=_on_terminal,
     )
     ctx.spawn_worker_task(coro)
     return session_id
@@ -556,6 +593,29 @@ async def _handle_slash_command(
     invocation: SlashCommandInvocation, ctx: DispatchContext
 ) -> None:
     """Route an authorised slash-command invocation to its dedicated handler."""
+    # 005: ``/done`` is no longer in the curated registry but is still routed
+    # inbound as a deprecation alias for ``/cancel``. Handle it before the
+    # registry lookup so it doesn't fall through to ``unknown_command``.
+    if invocation.name == "done":
+        if invocation.message_thread_id is None:
+            # /done in main chat → reason=main_chat_done (R5: distinct from
+            # /cancel's main_chat_cancel).
+            audit.log_unbound_event(
+                audit.EV_SLASH_COMMAND_REJECTED,
+                {
+                    "reason": audit.REASON_MAIN_CHAT_DONE,
+                    "command": invocation.name,
+                    "sender_id": invocation.sender_id,
+                    "chat_id": invocation.chat_id,
+                    "message_id": invocation.message_id,
+                    "message_thread_id": None,
+                    "args_text_truncated": invocation.args_text[:64],
+                },
+            )
+            return
+        await _handle_slash_cancel(invocation, ctx, alias_token="/done")
+        return
+
     cmd = rt_commands.lookup(invocation.name)
     if cmd is None:
         audit.log_unbound_event(
@@ -592,11 +652,13 @@ async def _handle_slash_command(
         return
 
     if cmd.requires_topic and invocation.message_thread_id is None:
-        # /done in main chat → silent reject + audit (clarification Q2).
+        # 005: /cancel in main chat → main_chat_cancel (R5: distinct value
+        # from /done's main_chat_done so audit can split them).
+        # The /done alias path handles its own main-chat reject above.
         audit.log_unbound_event(
             audit.EV_SLASH_COMMAND_REJECTED,
             {
-                "reason": "main_chat_done",
+                "reason": audit.REASON_MAIN_CHAT_CANCEL,
                 "command": invocation.name,
                 "sender_id": invocation.sender_id,
                 "chat_id": invocation.chat_id,
@@ -609,11 +671,11 @@ async def _handle_slash_command(
 
     if invocation.name == "run":
         await _handle_slash_run(invocation, ctx)
-    elif invocation.name == "done":
-        await _handle_slash_done(invocation, ctx)
+    elif invocation.name == "cancel":
+        await _handle_slash_cancel(invocation, ctx, alias_token=None)
     elif invocation.name == "status":
         await _handle_slash_status(invocation, ctx)
-    # Unknown names already short-circuited above.
+    # Unknown / done names already short-circuited above.
 
 
 async def _reply_to_invocation(
@@ -817,26 +879,50 @@ async def _accept_via_slash(
         ctx.conn.commit()
 
 
-async def _handle_slash_done(
-    invocation: SlashCommandInvocation, ctx: DispatchContext
+async def _handle_slash_cancel(
+    invocation: SlashCommandInvocation,
+    ctx: DispatchContext,
+    *,
+    alias_token: str | None,
 ) -> None:
-    """Equivalent of 003's plain-text termination, scoped to the slash form.
+    """Route ``/cancel`` (canonical) or ``/done`` (deprecated alias) to the
+    003 termination ladder.
 
-    Reuses ``_handle_termination`` (003) so the SIGUSR1 / grace ladder /
-    audit trail is identical. Adds an ``EV_SLASH_COMMAND_RECEIVED`` event in
-    addition to 003's ``telegram_termination_received`` so the audit log can
-    distinguish slash vs plain-text invocations.
+    ``alias_token`` is ``None`` for the canonical command, or a deprecation
+    token (``"/done"``) when this came in via the alias path. When non-None,
+    a one-time WARNING per ``(alias_token, session_id)`` pair is emitted via
+    :func:`_emit_alias_warning` *before* the cancel ladder runs.
+
+    Reuses :func:`_handle_termination` (003) so the SIGUSR1 / grace ladder /
+    audit trail is identical to the plain-text path. Records both an
+    ``EV_SLASH_COMMAND_RECEIVED`` event and 003's
+    ``telegram_termination_received`` so the audit log distinguishes slash
+    vs plain-text invocations.
     """
     # message_thread_id non-None already enforced by _handle_slash_command.
     assert invocation.message_thread_id is not None
-    # Resolve session first so we can audit before signalling.
+    # Resolve session first so we can audit + emit the alias-deprecation
+    # WARNING before signalling.
     row = core_db.get_active_session_by_topic(
         ctx.conn, invocation.message_thread_id
     )
+    session_id_for_audit = str(row["id"]) if row is not None else None
+
+    if alias_token is not None and session_id_for_audit is not None:
+        _emit_alias_warning(
+            ctx,
+            alias_token=alias_token,
+            session_id=session_id_for_audit,
+            sender_id=invocation.sender_id,
+            chat_id=invocation.chat_id,
+            message_id=invocation.message_id,
+            message_thread_id=invocation.message_thread_id,
+        )
+
     if row is not None:
         audit.record_event(
             ctx.conn,
-            session_id=str(row["id"]),
+            session_id=session_id_for_audit,
             type=audit.EV_SLASH_COMMAND_RECEIVED,
             payload={
                 "command": invocation.name,
@@ -856,6 +942,53 @@ async def _handle_slash_done(
         chat_id=invocation.chat_id,
         message_id=invocation.message_id,
         topic_id=invocation.message_thread_id,
+    )
+
+
+def _emit_alias_warning(
+    ctx: DispatchContext,
+    *,
+    alias_token: str,
+    session_id: str,
+    sender_id: int,
+    chat_id: int,
+    message_id: int | None,
+    message_thread_id: int | None,
+) -> None:
+    """Emit a one-time deprecation WARNING + audit row per (alias, session).
+
+    005 R2 + R5: per-(alias_token, session_id) idempotency. The runtime
+    owns the set; this helper is the single chokepoint that consults it
+    and records the event. Repeated alias use on the same session produces
+    no duplicate audit lines.
+    """
+    if (
+        ctx.has_alias_deprecation_warned is None
+        or ctx.record_alias_deprecation_warned is None
+    ):
+        # Tests / contexts that don't wire the runtime hooks fall through to
+        # silent (no WARNING). The cancel ladder still runs.
+        return
+    if ctx.has_alias_deprecation_warned(alias_token, session_id):
+        return
+    ctx.record_alias_deprecation_warned(alias_token, session_id)
+    _log.warning(
+        "alias_deprecation",
+        alias_token=alias_token,
+        canonical="cancel",
+        session_id=session_id,
+    )
+    audit.log_unbound_event(
+        audit.EV_ALIAS_DEPRECATION_USED,
+        {
+            "alias_token": alias_token,
+            "canonical": "cancel",
+            "session_id": session_id,
+            "sender_id": sender_id,
+            "message_id": message_id,
+            "chat_id": chat_id,
+            "message_thread_id": message_thread_id,
+        },
     )
 
 
