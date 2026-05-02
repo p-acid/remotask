@@ -158,12 +158,19 @@ Expected: identical cancellation + WARNING line with `alias_token=stop`. Repeat 
 
 ## Step 7 — alias idempotency (US2)
 
-Trigger a session, post `/done` to cancel it, then post `/done` again immediately:
+Trigger a session, post `/done` to cancel it, **wait until you see the
+`[ZXTL-1239] Session canceled by operator.` line in the topic** (which only
+appears after the worker has reached its terminal state), then post `/done`
+again. The wait is important — sending the second `/done` before the worker
+has actually exited would race the cancel handler and could land while the
+session is still active, breaking the determinism of the
+`reason=no_active_session` outcome the second invocation must hit.
 
 ```text
 /run ZXTL-1239 ...
 ...
 /done
+# wait until the topic shows: [ZXTL-1239] Session canceled by operator.
 /done
 ```
 

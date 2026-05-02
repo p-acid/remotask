@@ -139,7 +139,7 @@ Every progress, status, and final-state message the worker posts to its topic ca
 
 #### `[KEY]` prefix
 
-- **FR-009**: Every outbound message the worker sends to its topic during the running phase MUST begin with `[<issue_key>] ` (with a single trailing space) — specifically: `Status: iteration N/M`, `Status: final iteration N (...)`, `Status: completed`, `Status: canceled`, `Status: failed`, `Session canceled by operator.`, `Session stopped (forced) by operator.`, `Session timed out`, `Session failed: <reason>`.
+- **FR-009**: Every outbound message the worker sends to its topic during the running phase MUST begin with `[<issue_key>] ` (with a single trailing space) — specifically: `Status: iteration N/M`, `Status: final iteration N (...)`, `Status: completed`, `Status: canceled`, `Status: failed`, `Session canceled by operator.`, `Session force-canceled by operator (grace window exceeded).`, `Session terminated: timeout ({seconds}s)`, `Session failed: <reason>`.
 - **FR-010**: Templates that already name the issue_key in their body MUST NOT be prefixed (would produce visible stutter): `Session starting for ZXTL-1234. Worktree: …`, `Draft PR opened: <url>`. The exhaustive list lives in `data-model.md` "Outbound message catalogue".
 - **FR-011**: The prefix MUST be applied at a single chokepoint helper (`topic.format_progress(issue_key, body)`) so reviewers can verify "did 005 forget to prefix any message?" at one location.
 

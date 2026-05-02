@@ -118,7 +118,7 @@ Coverage table:
 | `Status: completed` / `Status: canceled` / `Status: failed` | **Yes**  |  |
 | `Session canceled by operator.`                        | **Yes**   |  |
 | `Session force-canceled by operator (grace window exceeded).` | **Yes**   |  |
-| `Session timed out` / `Session failed: <reason>`       | **Yes**   |  |
+| `Session terminated: timeout ({seconds}s)` / `Session failed: <reason>` | **Yes**   |  |
 | `/run` empty-args usage hint                           | **No**    | Not session-bound |
 | `/run` no-default-project hint                         | **No**    | Not session-bound |
 | `/status` reply (main-chat list)                       | **No**    | Already lists keys per row |
