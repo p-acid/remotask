@@ -111,8 +111,7 @@ uv run pytest -q
 기대 결과:
 - 신규 회귀 테스트 2개 모두 PASS.
 - 005 보호 테스트 모두 PASS (`test_operator_stop*`은 본 feature에서 `/cancel`로 마이그레이션된 형태).
-- 전체 테스트 카운트: 305 ± 5 건 (305 ≈ 308[005 baseline] + 2[신규 회귀] − 18[삭제·축소]; 정확한 숫자는 implement
-  후 PR에서 명시).
+- 전체 테스트 카운트(현재 PR 기준): 274 passed, 2 skipped, 0 failed (005 baseline 308 → net −34).
 
 ---
 

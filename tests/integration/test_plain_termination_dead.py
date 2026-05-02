@@ -157,17 +157,12 @@ async def test_plain_token_in_topic_does_nothing(
     ).fetchone()[0]
     assert events_count_after == events_count_before
 
-    # No new alias_deprecation_used or termination_received audit lines.
+    # US2 contract: zero new audit rows for any reason. Lock the strict
+    # invariant so any future regression that fires *any* audit event for
+    # plain-text tokens is caught.
     audit_after = _read_audit_events(log_dir)
     new_audit = audit_after[len(audit_before):]
-    assert all(
-        e.get("event_type") not in (
-            "alias_deprecation_used",
-            "telegram_termination_received",
-            "telegram_termination_rejected",
-        )
-        for e in new_audit
-    ), f"unexpected audit events: {new_audit}"
+    assert new_audit == [], f"unexpected audit events: {new_audit}"
 
 
 async def test_plain_done_in_main_chat_already_non_control(

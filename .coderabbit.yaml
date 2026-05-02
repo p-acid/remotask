@@ -10,5 +10,12 @@ reviews:
   poem: false
   review_status: true
   collapse_walkthrough: false
+  # spec/plan/research 류 문서는 의도적으로 다듬은 산출물이라 코드 리뷰 가치가
+  # 낮고 markdownlint 잡음만 만든다. tests/는 회귀 가드 가치를 위해 포함 유지.
+  path_filters:
+    - "!specs/**"
+    - "!.specify/**"
+    - "!CLAUDE.md"
+    - "!PRD.md"
 chat:
   auto_reply: true

@@ -174,9 +174,10 @@ that includes a now-removed alias attempt, the operator's view contains zero dep
   outbound messages from the bot and zero new database session events tied to that input.
 - **SC-004**: All 005-introduced behaviors continue to pass their existing tests: `/cancel` canonical (in-topic and
   main-chat), `[<issue_key>]` prefix, `REASON_MAIN_CHAT_CANCEL` audit reason. Zero regression-test breakages.
-- **SC-005**: The full test suite passes with the deletions and migrations applied. The total test count drops by the
-  expected number of removed tests (≈18 tests across the three deleted files plus removed classes) and gains 2 new
-  regression tests (FR-019, FR-020) for a net delta of roughly −16 to −18 tests.
+- **SC-005**: The full test suite passes with the deletions and migrations applied. The actual net delta is **−34
+  tests** (308 baseline → 274; FR-016/017 file/class deletions plus the additional plain-text-grammar dependents
+  identified during implementation, minus 8 new regression tests across FR-019 and FR-020). All `/cancel`
+  canonical, `[<issue_key>]` prefix, and `REASON_MAIN_CHAT_CANCEL` coverage from 005 is preserved.
 
 ## Assumptions
 

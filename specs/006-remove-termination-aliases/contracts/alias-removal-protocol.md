@@ -39,10 +39,12 @@ match_slash_command(message, bot_username) → SlashInvocation | None
 **Action**:
 1. dispatcher는 어떤 세션 상태도 변경하지 않는다.
 2. dispatcher는 어떤 outbound Telegram 메시지도 보내지 않는다 (004의 silent reject 정책).
-3. audit 로그에 `EV_SLASH_COMMAND_REJECTED` 이벤트를 기록한다. 필드:
-   - `command_name`: 원본 name (lowercased로 정규화됨, 예: `"done"`)
-   - `reason`: `REASON_UNKNOWN_COMMAND` (= `"unknown_command"`)
-   - `chat_id`, `message_thread_id`, `from_user_id`: 메시지 원본에서 추출
+3. audit 로그에 `EV_SLASH_COMMAND_REJECTED` 이벤트를 기록한다. 필드 (현재 구현
+   기준 `dispatcher._handle_slash_command`):
+   - `command`: parser가 정규화한 lowercased name (예: `"done"`)
+   - `reason`: `"unknown_command"`
+   - `chat_id`, `message_thread_id`, `sender_id`: 메시지 원본에서 추출
+   - `message_id`, `args_text_truncated`: 메시지 원본에서 추출
 
 **Post-conditions**:
 - 실행 중인 세션은 영향을 받지 않는다.
@@ -116,9 +118,9 @@ feature에서 다음을 보호한다:
 
 | Operator input                          | Channel        | Audit event                                  | Reason field           | Side effects on session |
 |-----------------------------------------|----------------|----------------------------------------------|------------------------|-------------------------|
-| `/cancel`                               | Topic (active) | `operator_cancel`                            | (n/a)                  | Cancel ladder triggered |
+| `/cancel`                               | Topic (active) | `slash_command_received` + `telegram_termination_received` | (n/a) | Cancel ladder triggered |
 | `/cancel`                               | Main chat      | `slash_command_rejected`                     | `main_chat_cancel`     | None                    |
-| `/cancel something`                     | Topic (active) | `operator_cancel` (args 무시 — 005 정책)     | (n/a)                  | Cancel ladder triggered |
+| `/cancel something`                     | Topic (active) | `slash_command_received` + `telegram_termination_received` (args 무시 — 005 정책) | (n/a) | Cancel ladder triggered |
 | `/done`                                 | Topic (active) | `slash_command_rejected`                     | `unknown_command`      | None                    |
 | `/done`                                 | Main chat      | `slash_command_rejected`                     | `unknown_command`      | None                    |
 | `/done@<bot_username>`                  | Topic / Main   | `slash_command_rejected`                     | `unknown_command`      | None                    |
