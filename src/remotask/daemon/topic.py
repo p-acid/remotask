@@ -22,6 +22,10 @@ TPL_PR_CREATED: Final = "Draft PR opened: {pr_url}"
 TPL_SESSION_FAILED: Final = "Session failed: {reason}"
 TPL_SESSION_TIMEOUT: Final = "Session terminated: timeout ({seconds}s)"
 TPL_DAEMON_RESTART_CLEANUP: Final = "Session terminated by daemon restart."
+TPL_PROGRESS: Final = "Status: iteration {i}/{n} @ {ts}"
+TPL_FINAL: Final = "Status: final iteration {i} ({reason})"
+TPL_OPERATOR_STOPPED: Final = "Session stopped by operator."
+TPL_OPERATOR_STOPPED_FORCED: Final = "Session force-stopped by operator (grace window exceeded)."
 
 # ---- main-chat-bound templates (sent in the group, not in a topic) -------
 

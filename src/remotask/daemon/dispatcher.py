@@ -16,6 +16,7 @@ day one.
 """
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -29,7 +30,11 @@ from remotask.core import db as core_db
 from remotask.core import projects as rt_projects
 from remotask.daemon import audit, sessions, topic, worker
 from remotask.telegram.client import TelegramAPIError, TelegramClient
-from remotask.telegram.parser import extract_first_issue_key, split_prefix
+from remotask.telegram.parser import (
+    extract_first_issue_key,
+    match_termination_command,
+    split_prefix,
+)
 
 _log = structlog.get_logger().bind(component="dispatcher")
 
@@ -49,6 +54,13 @@ class DispatchContext:
     # production claude-agent-sdk driver is used.
     worker_argv: list[str] | None = None
     worker_env: dict[str, str] | None = None
+    # 003: hooks the runtime provides so the termination branch can record
+    # in-flight stops and resolve a session id to its worker pid. Tests pass
+    # in-memory stand-ins.
+    mark_operator_stop_in_flight: Callable[[str, int], None] | None = None
+    is_operator_stop_in_flight: Callable[[str], bool] | None = None
+    worker_pid_for_session: Callable[[str], int | None] | None = None
+    register_worker_pid: Callable[[str, int], None] | None = None
 
 
 async def dispatch(message: dict[str, Any], ctx: DispatchContext) -> None:
@@ -66,8 +78,26 @@ async def dispatch(message: dict[str, Any], ctx: DispatchContext) -> None:
         # Malformed update; nothing actionable.
         return
 
+    thread_id = message.get("message_thread_id")
+
     # ---- whitelist gate (FR-002, FR-003) ---------------------------------
     if sender not in ctx.cfg.telegram.allowed_user_ids:
+        # 003: distinguish unauthorised termination attempts from generic
+        # unauthorised messages so audit can separate "scanning" from "trying
+        # to abort someone else's session".
+        if thread_id is not None and match_termination_command(text) is not None:
+            audit.log_unbound_event(
+                audit.EV_TELEGRAM_TERMINATION_REJECTED,
+                {
+                    "reason": "unauthorized",
+                    "sender_id": sender,
+                    "chat_id": chat,
+                    "message_id": msg_id,
+                    "message_thread_id": thread_id,
+                    "command_text": text[:32],
+                },
+            )
+            return
         # Silent rejection (no Telegram reply, no topic, no session row);
         # the audit log captures sender + message + chat for later review.
         audit.log_unbound_event(
@@ -75,6 +105,22 @@ async def dispatch(message: dict[str, Any], ctx: DispatchContext) -> None:
             {"sender_id": sender, "chat_id": chat, "message_id": msg_id},
         )
         return
+
+    # ---- termination branch (003 / US2) -----------------------------------
+    # Topic-only (clarification Q1): main-chat termination tokens fall through
+    # and are silently ignored as casual chat by the issue-key path below.
+    if thread_id is not None:
+        canonical = match_termination_command(text)
+        if canonical is not None:
+            await _handle_termination(
+                ctx=ctx,
+                command=canonical,
+                sender_id=sender,
+                chat_id=chat,
+                message_id=msg_id,
+                topic_id=int(thread_id),
+            )
+            return
 
     # ---- parse issue key -------------------------------------------------
     key = extract_first_issue_key(text)
@@ -154,6 +200,162 @@ async def dispatch(message: dict[str, Any], ctx: DispatchContext) -> None:
         project=project,
         ctx=ctx,
     )
+
+
+async def _handle_termination(
+    *,
+    ctx: DispatchContext,
+    command: str,
+    sender_id: int,
+    chat_id: int,
+    message_id: int | None,
+    topic_id: int,
+) -> None:
+    """Resolve the topic to its session and send SIGUSR1 to the worker."""
+    import os
+    import signal as _signal
+
+    log = _log.bind(topic_id=topic_id, sender_id=sender_id, command=command)
+
+    row = core_db.get_active_session_by_topic(ctx.conn, topic_id)
+    if row is None:
+        # Stale topic / no active session for this thread → silent ignore + audit.
+        audit.log_unbound_event(
+            audit.EV_TELEGRAM_TERMINATION_REJECTED,
+            {
+                "reason": "no_active_session",
+                "sender_id": sender_id,
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "message_thread_id": topic_id,
+                "command_text": command,
+            },
+        )
+        return
+
+    session_id = str(row["id"])
+
+    # Avoid double-handling if a previous `done` is already in flight.
+    if ctx.is_operator_stop_in_flight is not None and ctx.is_operator_stop_in_flight(
+        session_id
+    ):
+        audit.record_event(
+            ctx.conn,
+            session_id=session_id,
+            type=audit.EV_TELEGRAM_TERMINATION_RECEIVED,
+            payload={
+                "command": command,
+                "sender_id": sender_id,
+                "message_id": message_id,
+                "chat_id": chat_id,
+                "message_thread_id": topic_id,
+                "duplicate": True,
+            },
+        )
+        ctx.conn.commit()
+        return
+
+    pid = ctx.worker_pid_for_session(session_id) if ctx.worker_pid_for_session else None
+    if pid is None:
+        # Worker hasn't started yet (race: operator typed `done` between the
+        # session insert and worker spawn). Treat as no_active_session for
+        # audit purposes; the worker will spawn and run normally.
+        audit.log_unbound_event(
+            audit.EV_TELEGRAM_TERMINATION_REJECTED,
+            {
+                "reason": "no_active_session",
+                "sender_id": sender_id,
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "message_thread_id": topic_id,
+                "command_text": command,
+            },
+        )
+        return
+
+    audit.record_event(
+        ctx.conn,
+        session_id=session_id,
+        type=audit.EV_TELEGRAM_TERMINATION_RECEIVED,
+        payload={
+            "command": command,
+            "sender_id": sender_id,
+            "message_id": message_id,
+            "chat_id": chat_id,
+            "message_thread_id": topic_id,
+        },
+    )
+    ctx.conn.commit()
+
+    if ctx.mark_operator_stop_in_flight is not None:
+        ctx.mark_operator_stop_in_flight(session_id, pid)
+
+    try:
+        os.kill(pid, _signal.SIGUSR1)
+        log.info("dispatch.termination.sent_sigusr1")
+    except ProcessLookupError:
+        log.info("dispatch.termination.worker_already_gone")
+        return
+
+    # 003 / US3: grace watchdog. If the worker is still alive after the
+    # configured grace window, escalate via the 002 SIGTERM/SIGKILL ladder.
+    grace = float(ctx.cfg.agent.operator_stop_grace_seconds)
+    asyncio.create_task(
+        _operator_stop_grace_watchdog(pid=pid, grace_seconds=grace, log=log)
+    )
+
+
+async def _operator_stop_grace_watchdog(
+    *, pid: int, grace_seconds: float, log: Any
+) -> None:
+    """Wait up to ``grace_seconds`` for ``pid`` to exit; escalate via SIGTERM/SIGKILL."""
+    import os as _os
+    import signal as _signal
+
+    end = asyncio.get_running_loop().time() + grace_seconds
+    while asyncio.get_running_loop().time() < end:
+        try:
+            _os.kill(pid, 0)
+        except ProcessLookupError:
+            log.info("dispatch.termination.graceful_exit")
+            return
+        await asyncio.sleep(0.2)
+
+    # Grace expired — worker is still around. Escalate.
+    log.warning("dispatch.termination.grace_expired", pid=pid)
+    pgid = _safe_pgid(pid)
+    target = pgid if pgid is not None else None
+    try:
+        if target is not None:
+            _os.killpg(target, _signal.SIGTERM)
+        else:
+            _os.kill(pid, _signal.SIGTERM)
+    except ProcessLookupError:
+        return
+
+    # Final SIGKILL after a 5s SIGTERM grace, mirroring 002's ladder.
+    await asyncio.sleep(5.0)
+    try:
+        _os.kill(pid, 0)
+    except ProcessLookupError:
+        return
+    log.warning("dispatch.termination.escalating_to_sigkill", pid=pid)
+    try:
+        if target is not None:
+            _os.killpg(target, _signal.SIGKILL)
+        else:
+            _os.kill(pid, _signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
+def _safe_pgid(pid: int) -> int | None:
+    import os as _os
+
+    try:
+        return _os.getpgid(pid)
+    except ProcessLookupError:
+        return None
 
 
 async def _accept_trigger(
@@ -281,11 +483,22 @@ async def _accept_trigger(
 
     # Hand off to the worker. The runtime registers this as a background task
     # so its lifetime is tracked across shutdown.
+    def _on_worker_started(pid: int) -> None:
+        if ctx.register_worker_pid is not None:
+            ctx.register_worker_pid(session_id, pid)
+
+    def _is_op_stop_in_flight() -> bool:
+        if ctx.is_operator_stop_in_flight is None:
+            return False
+        return ctx.is_operator_stop_in_flight(session_id)
+
     coro = worker.run_worker(
         spec,
         conn=ctx.conn,
         client=ctx.client,
         chat_id=chat_id,
         topic_id=forum.message_thread_id,
+        on_worker_started=_on_worker_started,
+        is_operator_stop_in_flight=_is_op_stop_in_flight,
     )
     ctx.spawn_worker_task(coro)

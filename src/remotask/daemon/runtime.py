@@ -187,6 +187,16 @@ class Runtime:
         # Last applied listener.cmd seq — guards against re-applying a stale
         # command file when the daemon has already processed it.
         self._last_cmd_seq = 0
+        # 003: session ids for which an operator stop is currently in flight.
+        # The dispatcher's termination branch adds; the worker exit handler
+        # checks (and the worker.run_worker post-exit logic uses to decide
+        # between operator_stop and timeout / failed transitions). Both
+        # mutators run on the listener thread's event loop, so a plain set
+        # is sufficient — no lock needed.
+        self._operator_stop_in_flight: set[str] = set()
+        # 003: per-session worker-pid index, populated by the dispatcher when
+        # it spawns a worker so the termination branch can ``os.kill`` it.
+        self._worker_pid_by_session: dict[str, int] = {}
 
     # ---- lifecycle (main thread) ---------------------------------------------
 
@@ -304,6 +314,32 @@ class Runtime:
         task = loop.create_task(coro)
         self._worker_tasks.add(task)
         task.add_done_callback(self._worker_tasks.discard)
+
+    # ---- 003: operator-stop coordination ------------------------------------
+
+    def mark_operator_stop_in_flight(self, session_id: str, worker_pid: int) -> None:
+        """Record that an operator stop has been initiated for ``session_id``.
+
+        Called from the dispatcher's termination branch right before sending
+        SIGUSR1. The pid is captured here too so the dispatcher's grace
+        watchdog can escalate via ``_kill_worker_group`` if needed.
+        """
+        self._operator_stop_in_flight.add(session_id)
+        self._worker_pid_by_session[session_id] = worker_pid
+
+    def is_operator_stop_in_flight(self, session_id: str) -> bool:
+        return session_id in self._operator_stop_in_flight
+
+    def clear_operator_stop_in_flight(self, session_id: str) -> None:
+        self._operator_stop_in_flight.discard(session_id)
+        self._worker_pid_by_session.pop(session_id, None)
+
+    def register_worker_pid(self, session_id: str, worker_pid: int) -> None:
+        """Index a session id to its worker pid (called by the dispatcher)."""
+        self._worker_pid_by_session[session_id] = worker_pid
+
+    def worker_pid_for_session(self, session_id: str) -> int | None:
+        return self._worker_pid_by_session.get(session_id)
 
     # ---- shutdown ------------------------------------------------------------
 

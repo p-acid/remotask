@@ -24,6 +24,7 @@ import os
 import re
 import signal
 import sqlite3
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -37,6 +38,9 @@ from remotask.telegram.client import TelegramClient
 
 _log = structlog.get_logger().bind(component="worker")
 _PR_URL_RE = re.compile(r"^PR_URL=(\S+)\s*$")
+# 003 demo worker stdout protocol — see specs/003-e2e-demo/contracts/worker-stdout-protocol.md.
+_PROGRESS_RE = re.compile(r"^PROGRESS (\d+)/(\d+) (\S+)\s*$")
+_FINAL_RE = re.compile(r"^FINAL (\d+) (\S+)\s*$")
 _SIGTERM_GRACE = 10.0
 
 
@@ -62,6 +66,13 @@ class WorkerOutcome:
     pr_url: str | None
     stderr_tail: str
     timed_out: bool = False
+    # 003: last ``FINAL`` line emitted by the worker, if any.
+    final_marker: tuple[int, str] | None = None
+    # 003: True when this terminal transition was triggered by an operator
+    # stop command (graceful or forced). The dispatcher sets a flag on the
+    # runtime; the daemon-side waiter reads it after the worker exits.
+    operator_stopped: bool = False
+    operator_stop_forced: bool = False
 
 
 def _branch_for(issue_key: str) -> str:
@@ -131,22 +142,40 @@ def _session_log_path(session_id: str) -> Path:
     return p
 
 
+@dataclass
+class StreamResult:
+    """Captured outputs from a worker subprocess run."""
+
+    pr_url: str | None = None
+    stderr_tail: str = ""
+    # Last ``FINAL`` line observed (003): tuple ``(iteration, reason)`` or None.
+    final_marker: tuple[int, str] | None = None
+
+
 async def _stream_subprocess_output(
     proc: asyncio.subprocess.Process,
     log_path: Path,
-) -> tuple[str | None, str]:
-    """Tee stdout to ``log_path`` while harvesting ``PR_URL=`` and the stderr tail.
+    *,
+    progress_handler: Callable[[int, int, str], Awaitable[None]] | None = None,
+    final_handler: Callable[[int, str], Awaitable[None]] | None = None,
+) -> StreamResult:
+    """Tee stdout to ``log_path`` while harvesting marker lines and the stderr tail.
 
-    Returns ``(pr_url_or_none, stderr_tail)``. ``stderr_tail`` is the last ~2000
-    chars of stderr — used for the failure-reason message in the topic.
+    Recognised stdout line shapes (each posted to Telegram via the optional
+    handlers if provided; otherwise just logged):
+
+    - ``PR_URL=<url>`` — captured into ``pr_url`` (002 behaviour, unchanged).
+    - ``PROGRESS i/N <iso8601>`` — invokes ``progress_handler(i, N, ts)``.
+    - ``FINAL <i> <reason>`` — invokes ``final_handler(i, reason)`` and
+      records the marker in the result.
+    - Anything else — log-only.
     """
-    pr_url: str | None = None
+    result = StreamResult()
     stderr_chunks: list[str] = []
 
     assert proc.stdout is not None and proc.stderr is not None
 
     async def _read_stdout() -> None:
-        nonlocal pr_url
         with log_path.open("ab") as out:
             while True:
                 line = await proc.stdout.readline()  # type: ignore[union-attr]
@@ -154,9 +183,38 @@ async def _stream_subprocess_output(
                     return
                 out.write(line)
                 out.flush()
-                m = _PR_URL_RE.match(line.decode(errors="replace"))
-                if m and pr_url is None:
-                    pr_url = m.group(1)
+                text = line.decode(errors="replace").rstrip("\r\n")
+
+                m_pr = _PR_URL_RE.match(text)
+                if m_pr and result.pr_url is None:
+                    result.pr_url = m_pr.group(1)
+                    continue
+
+                m_prog = _PROGRESS_RE.match(text)
+                if m_prog:
+                    if progress_handler is not None:
+                        try:
+                            await progress_handler(
+                                int(m_prog.group(1)),
+                                int(m_prog.group(2)),
+                                m_prog.group(3),
+                            )
+                        except Exception as e:  # pragma: no cover — best-effort
+                            _log.warning("worker.progress_handler_failed", error=str(e))
+                    continue
+
+                m_final = _FINAL_RE.match(text)
+                if m_final:
+                    iteration = int(m_final.group(1))
+                    reason = m_final.group(2)
+                    result.final_marker = (iteration, reason)
+                    if final_handler is not None:
+                        try:
+                            await final_handler(iteration, reason)
+                        except Exception as e:  # pragma: no cover — best-effort
+                            _log.warning("worker.final_handler_failed", error=str(e))
+                    continue
+                # Unmatched lines: log-only (already written above).
 
     async def _read_stderr() -> None:
         with log_path.open("ab") as out:
@@ -169,8 +227,8 @@ async def _stream_subprocess_output(
                 stderr_chunks.append(line.decode(errors="replace"))
 
     await asyncio.gather(_read_stdout(), _read_stderr())
-    tail = "".join(stderr_chunks)[-2000:].rstrip()
-    return pr_url, tail
+    result.stderr_tail = "".join(stderr_chunks)[-2000:].rstrip()
+    return result
 
 
 async def run_worker(
@@ -180,6 +238,8 @@ async def run_worker(
     client: TelegramClient,
     chat_id: int,
     topic_id: int,
+    is_operator_stop_in_flight: Callable[[], bool] | None = None,
+    on_worker_started: Callable[[int], None] | None = None,
 ) -> WorkerOutcome:
     """Spawn the worker, watch it to completion, and apply the resulting transitions.
 
@@ -269,10 +329,41 @@ async def run_worker(
     conn.execute("UPDATE sessions SET pid = ? WHERE id = ?", (proc.pid, spec.session_id))
     conn.commit()
     log.info("worker.spawned", pid=proc.pid)
+    if on_worker_started is not None:
+        try:
+            on_worker_started(proc.pid)
+        except Exception as e:  # pragma: no cover — defensive
+            log.warning("worker.on_started_callback_failed", error=str(e))
+
+    # 003 stdout streaming handlers — post PROGRESS lines verbatim to the topic
+    # and FINAL lines as the marker template. Both are best-effort posts; a
+    # failed sendMessage doesn't crash the worker.
+    async def _on_progress(i: int, n: int, ts: str) -> None:
+        await topic.post_to_topic(
+            client,
+            chat_id=chat_id,
+            topic_id=topic_id,
+            text=topic.TPL_PROGRESS.format(i=i, n=n, ts=ts),
+        )
+
+    async def _on_final(iteration: int, reason: str) -> None:
+        await topic.post_to_topic(
+            client,
+            chat_id=chat_id,
+            topic_id=topic_id,
+            text=topic.TPL_FINAL.format(i=iteration, reason=reason),
+        )
 
     timed_out = False
     timeout = spec.timeout_seconds
-    stream_task = asyncio.create_task(_stream_subprocess_output(proc, log_path))
+    stream_task = asyncio.create_task(
+        _stream_subprocess_output(
+            proc,
+            log_path,
+            progress_handler=_on_progress,
+            final_handler=_on_final,
+        )
+    )
     try:
         if timeout is not None and timeout > 0:
             try:
@@ -283,16 +374,17 @@ async def run_worker(
         else:
             await proc.wait()
     finally:
-        # Make sure the streaming task has a chance to drain the pipes after
-        # the process exits (or is killed).
+        # Drain pipes after the process exits (or is killed).
+        stream_result = StreamResult()
         try:
-            pr_url, stderr_tail = await asyncio.wait_for(stream_task, timeout=5.0)
+            stream_result = await asyncio.wait_for(stream_task, timeout=5.0)
         except (TimeoutError, Exception):
-            pr_url = None
-            stderr_tail = ""
             stream_task.cancel()
             with contextlib.suppress(Exception):
                 await stream_task
+        pr_url = stream_result.pr_url
+        stderr_tail = stream_result.stderr_tail
+        final_marker = stream_result.final_marker
 
     rc = proc.returncode if proc.returncode is not None else -1
 
@@ -311,8 +403,47 @@ async def run_worker(
     )
     conn.commit()
 
+    # 003: was an operator stop in-flight when the worker exited?
+    operator_stopped = (
+        is_operator_stop_in_flight() if is_operator_stop_in_flight is not None else False
+    )
+    # Distinguish graceful (worker honoured SIGUSR1, exited 0 with operator_stop
+    # FINAL line) from forced (worker was killed via the SIGTERM ladder while
+    # operator_stop_in_flight was set).
+    operator_stop_forced = operator_stopped and (rc != 0 or rc < 0)
+
     # Apply terminal transition.
-    if timed_out:
+    if operator_stopped and not operator_stop_forced:
+        # Graceful operator stop: exit 0 + operator_stop FINAL line.
+        sessions.transition(
+            conn,
+            session_id=spec.session_id,
+            from_status="running",
+            to_status="canceled",
+            extra_columns={"error_message": "operator_stop"},
+        )
+        await topic.post_to_topic(
+            client,
+            chat_id=chat_id,
+            topic_id=topic_id,
+            text=topic.TPL_OPERATOR_STOPPED,
+        )
+    elif operator_stop_forced:
+        # Worker had to be killed after grace expired.
+        sessions.transition(
+            conn,
+            session_id=spec.session_id,
+            from_status="running",
+            to_status="canceled",
+            extra_columns={"error_message": "operator_stop_forced"},
+        )
+        await topic.post_to_topic(
+            client,
+            chat_id=chat_id,
+            topic_id=topic_id,
+            text=topic.TPL_OPERATOR_STOPPED_FORCED,
+        )
+    elif timed_out:
         sessions.transition(
             conn,
             session_id=spec.session_id,
@@ -380,7 +511,13 @@ async def run_worker(
         await _remove_worktree(repo_path=spec.repo_path, worktree_path=worktree_path)
 
     return WorkerOutcome(
-        exit_code=rc, pr_url=pr_url, stderr_tail=stderr_tail, timed_out=timed_out
+        exit_code=rc,
+        pr_url=pr_url,
+        stderr_tail=stderr_tail,
+        timed_out=timed_out,
+        final_marker=final_marker,
+        operator_stopped=operator_stopped and not operator_stop_forced,
+        operator_stop_forced=operator_stop_forced,
     )
 
 
@@ -432,15 +569,15 @@ def _signal_name(rc: int) -> str | None:
 def _default_worker_argv() -> list[str]:
     """Argv for the production worker entrypoint.
 
-    The real claude-agent-sdk driver is the entry, but we don't ship one yet;
-    tests always pass an explicit ``argv`` via ``WorkerSpec``. The placeholder
-    raises a clear error if anyone tries to run the worker without supplying
-    argv before the production driver lands.
+    Points at ``remotask.agent.demo_worker`` (003) — a deterministic
+    placeholder workload that streams ``PROGRESS`` / ``FINAL`` lines to
+    stdout and honours ``SIGUSR1`` as a cooperative stop signal. A real
+    claude-agent-sdk driver will replace this in a future feature without
+    changing the daemon-side wiring.
     """
-    raise NotImplementedError(
-        "production claude-agent-sdk driver not implemented yet; "
-        "tests must supply WorkerSpec.argv (use tests.fakes.fake_agent.worker_command)"
-    )
+    import sys as _sys
+
+    return [_sys.executable, "-m", "remotask.agent.demo_worker"]
 
 
 def make_worktree_root(cfg: rt_config.AgentConfig) -> Path:

@@ -65,3 +65,49 @@ class TestSplitPrefix:
 
     def test_splits_underscore_prefix(self) -> None:
         assert split_prefix("PRJ_X-7") == "PRJ_X"
+
+
+class TestMatchTerminationCommand:
+    """003 termination grammar — single token from {done, stop, finish}."""
+
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("done", "done"),
+            ("Done", "done"),
+            ("DONE", "done"),
+            ("stop", "stop"),
+            ("Stop", "stop"),
+            ("finish", "finish"),
+            ("FINISH", "finish"),
+            ("  done  ", "done"),  # leading/trailing whitespace tolerated
+        ],
+    )
+    def test_accepts_canonical_tokens(self, text: str, expected: str) -> None:
+        from remotask.telegram.parser import match_termination_command
+
+        assert match_termination_command(text) == expected
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "",
+            "done please",
+            "cancel",
+            "kill",
+            "Stop?",
+            "are we done",
+            "done done",
+            "FOO-1",  # an issue key, not a termination
+            "STAHP",
+        ],
+    )
+    def test_rejects_anything_else(self, text: str) -> None:
+        from remotask.telegram.parser import match_termination_command
+
+        assert match_termination_command(text) is None
+
+    def test_handles_none_safely(self) -> None:
+        from remotask.telegram.parser import match_termination_command
+
+        assert match_termination_command("") is None

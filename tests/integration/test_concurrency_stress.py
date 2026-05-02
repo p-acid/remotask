@@ -81,8 +81,17 @@ def test_daemon_concurrent_spawn(tmp_xdg_env: Path, cli_runner) -> None:
                     stderr=subprocess.DEVNULL,
                 )
             )
-        # Give them a moment to race for the lock
-        time.sleep(1.0)
+        # Give them a moment to race for the lock. 5s is generous: the slowest
+        # losers spend most of the budget on Python import setup before they
+        # ever attempt the lock (the daemon stack pulls in httpx, structlog,
+        # claude-agent-sdk, etc. on cold start). A 1s budget was prone to
+        # false-positive "alive" counts on a busy laptop.
+        deadline = time.perf_counter() + 5.0
+        while time.perf_counter() < deadline:
+            alive = [p for p in procs if p.poll() is None]
+            if len(alive) <= 1:
+                break
+            time.sleep(0.1)
 
         alive = [p for p in procs if p.poll() is None]
         assert len(alive) == 1, (

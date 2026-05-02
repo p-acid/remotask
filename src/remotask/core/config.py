@@ -45,6 +45,10 @@ class AgentConfig(BaseModel):
         "acceptEdits"
     )
     session_timeout_seconds: int = Field(default=1800, ge=60, le=86400)
+    # Grace window after a SIGUSR1 (operator stop) before the daemon escalates
+    # to the SIGTERM/SIGKILL ladder from 002. Short by default — the demo
+    # placeholder only needs to flush one stdout line.
+    operator_stop_grace_seconds: int = Field(default=5, ge=1, le=30)
 
 
 class DaemonConfig(BaseModel):
