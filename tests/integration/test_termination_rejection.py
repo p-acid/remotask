@@ -99,11 +99,23 @@ async def test_three_rejection_paths(
     in_flight: set[str] = set()
     pid_by_session: dict[str, int] = {}
 
+    # Rejection paths must NEVER reach the worker-spawn site; if any of these
+    # cases accidentally falls through to ``_accept_trigger`` (e.g. due to a
+    # branching regression in the dispatcher), this fail-fast trap surfaces it
+    # immediately instead of silently swallowing the spawn coroutine.
+    def _spawn_should_not_run(coro):
+        if hasattr(coro, "close"):
+            coro.close()
+        pytest.fail(
+            "Rejection path unexpectedly attempted to spawn a worker — "
+            "the dispatcher's termination branch leaked through to _accept_trigger."
+        )
+
     ctx = rt_dispatcher.DispatchContext(
         conn=conn,
         client=client,
         cfg=cfg,
-        spawn_worker_task=lambda coro: coro.close() if hasattr(coro, "close") else None,
+        spawn_worker_task=_spawn_should_not_run,
         worker_argv=None,
         worker_env=None,
         mark_operator_stop_in_flight=lambda sid, pid: (

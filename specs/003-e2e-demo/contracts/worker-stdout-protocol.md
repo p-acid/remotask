@@ -18,12 +18,19 @@ The worker writes plain UTF-8 text lines to stdout, one record per line, termina
 
 ## Formal grammar
 
-```
+```text
 PROGRESS <iteration> "/" <total> SP <iso8601_timestamp>
 FINAL <iteration> SP <reason>
 
-iteration         := positive integer (1..1_000_000)
-total             := positive integer (>= iteration)
+# PROGRESS iteration is 1-based — emitted at the start of each iteration.
+progress_iteration := positive integer (1..1_000_000)
+
+# FINAL iteration may be 0 — meaning a stop arrived before the first PROGRESS
+# line had a chance to emit. Otherwise it is the index of the most recent
+# PROGRESS line.
+final_iteration   := non-negative integer (0..1_000_000)
+
+total             := positive integer (>= progress_iteration)
 iso8601_timestamp := ISO-8601 in UTC, e.g. 2026-05-02T08:30:15Z
 reason            := bareword in {natural, operator_stop}
 ```

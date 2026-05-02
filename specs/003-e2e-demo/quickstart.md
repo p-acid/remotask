@@ -86,19 +86,42 @@ Try the synonyms `stop` and `finish` too — same behaviour.
 
 ## Step 4 — operator stop: forced (escalation)
 
-This step needs a worker that ignores SIGUSR1 — useful if you want to see the escalation path. The simplest way is to start a session with the stock placeholder worker, and verify graceful is what you actually get (no escalation). If you want to *force* escalation:
+The stock placeholder worker honours `SIGUSR1`, so you'd never reach the
+forced-kill path with default settings. To exercise the escalation in a
+reproducible way, start the daemon with `REMOTASK_DEMO_IGNORE_SIGUSR1=1` —
+that flag tells `agent/demo_worker.py` to install `signal.SIG_IGN` for
+`SIGUSR1` instead of the cooperative handler. The `SIGTERM`/`SIGKILL`
+ladder then fires at the end of `agent.operator_stop_grace_seconds`.
 
-1. Edit `~/.config/remotask/config.toml` and set `agent.operator_stop_grace_seconds = 1` (1-second grace).
-2. Restart the daemon: `remotask daemon stop && remotask daemon start`.
-3. Trigger a session and post `done` immediately after the first progress line.
+```sh
+# 1) Tell the daemon to spawn workers that ignore SIGUSR1.
+remotask daemon stop
+REMOTASK_DEMO_IGNORE_SIGUSR1=1 \
+  remotask daemon run-foreground &      # or use launchctl env editing for installed daemons
 
-Even with the stock worker the grace should be enough; to truly trigger forced kill you would need a worker that ignores SIGUSR1 (out of scope for this demo). What you should *not* see is a stuck session — if grace expires, the SIGTERM ladder always fires.
+# 2) Shorten the grace window so the test runs in seconds.
+remotask config set agent.operator_stop_grace_seconds 1
 
-If a forced kill happens, the topic receives:
+# 3) Trigger and stop.
+remotask telegram start
+# In the group's main chat: send "ZXTL-1234" (or your registered prefix + number)
+# After the first "Status: iteration 1/N" message, in that topic post: "done"
+```
 
-- `Session force-stopped by operator (grace window exceeded).`
+Expected within ~5 seconds of the `done` post:
 
-and the row's `error_message` is `operator_stop_forced`.
+- The topic receives `Session force-stopped by operator (grace window exceeded).`
+- Row check:
+
+  ```sh
+  sqlite3 ~/.local/share/remotask/state.db \
+    "SELECT issue_key, status, error_message FROM sessions ORDER BY enqueued_at DESC LIMIT 1;"
+  # → status=canceled, error_message=operator_stop_forced
+  ```
+
+Once you're done verifying escalation, restart the daemon **without** the
+env var and restore `operator_stop_grace_seconds` to its default to return
+to the cooperative path.
 
 ## Step 5 — negative case: unauthorized stop
 

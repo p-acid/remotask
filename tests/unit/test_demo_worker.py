@@ -88,36 +88,53 @@ class TestSubprocessNaturalCompletion:
 
 class TestSubprocessSigusr1Handler:
     def test_sigusr1_triggers_operator_stop_final(self) -> None:
-        # Run with a long interval, send SIGUSR1 mid-sleep, expect operator_stop FINAL.
+        """Send SIGUSR1 only after the worker has flushed its first PROGRESS line.
+
+        Reading the first PROGRESS line proves the worker has installed its
+        signal handler and entered the main loop; signalling earlier risks
+        a no-op (default disposition for SIGUSR1 on Python is to terminate
+        the process before the handler is wired in).
+        """
+        import signal as _signal
+
         env = os.environ.copy()
         env["PYTHONPATH"] = str(REPO_ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
         env["REMOTASK_DEMO_ITERATIONS"] = "10"
         env["REMOTASK_DEMO_INTERVAL_SECONDS"] = "5.0"  # plenty of headroom
 
         proc = subprocess.Popen(
-            [sys.executable, "-m", "remotask.agent.demo_worker"],
+            [sys.executable, "-u", "-m", "remotask.agent.demo_worker"],
             env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            bufsize=1,
         )
+        assert proc.stdout is not None
+        captured: list[str] = []
         try:
-            # Wait until at least the first PROGRESS line shows up so we know
-            # the handler is installed and the loop is running.
+            # Block on stdout until we see the first PROGRESS line — proves
+            # signal handler is installed and we're inside the main loop.
             deadline = time.time() + 5.0
+            first_progress_seen = False
             while time.time() < deadline:
-                # Peek at non-blocking output by polling — easiest is: small sleep
-                # then send the signal. We rely on subprocess line buffering.
-                time.sleep(0.2)
-                if proc.poll() is not None:
+                line = proc.stdout.readline()
+                if not line:
+                    # Pipe closed unexpectedly (worker died).
                     break
-                # Send the signal once; the worker should wake within ≤ 0.5s.
-                import signal
+                captured.append(line)
+                if line.startswith("PROGRESS "):
+                    first_progress_seen = True
+                    break
 
-                proc.send_signal(signal.SIGUSR1)
-                break
+            assert first_progress_seen, (
+                f"worker did not emit a PROGRESS line within 5s; captured={captured}"
+            )
 
-            stdout, stderr = proc.communicate(timeout=5.0)
+            proc.send_signal(_signal.SIGUSR1)
+
+            stdout_rest, stderr = proc.communicate(timeout=5.0)
+            stdout = "".join(captured) + stdout_rest
         finally:
             if proc.poll() is None:
                 proc.kill()
@@ -125,7 +142,6 @@ class TestSubprocessSigusr1Handler:
 
         assert proc.returncode == 0, f"stderr: {stderr}"
         lines = [ln for ln in stdout.splitlines() if ln.strip()]
-        # At least one PROGRESS line, then a FINAL ... operator_stop line.
         progress_lines = [ln for ln in lines if ln.startswith("PROGRESS ")]
         final_lines = [ln for ln in lines if ln.startswith("FINAL ")]
         assert len(progress_lines) >= 1, lines

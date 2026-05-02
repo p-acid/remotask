@@ -404,13 +404,28 @@ async def run_worker(
     conn.commit()
 
     # 003: was an operator stop in-flight when the worker exited?
-    operator_stopped = (
+    in_flight = (
         is_operator_stop_in_flight() if is_operator_stop_in_flight is not None else False
     )
-    # Distinguish graceful (worker honoured SIGUSR1, exited 0 with operator_stop
-    # FINAL line) from forced (worker was killed via the SIGTERM ladder while
-    # operator_stop_in_flight was set).
-    operator_stop_forced = operator_stopped and (rc != 0 or rc < 0)
+    # The worker's own ``FINAL <i> <reason>`` line is the source of truth for
+    # graceful operator stops — if it is `operator_stop`, we trust it even
+    # when the runtime's in-flight flag was racy. Conversely, a `natural`
+    # FINAL emitted *after* a stop signal means the worker beat us to the
+    # natural-completion path and we should NOT classify it as operator stop.
+    final_reason = final_marker[1] if final_marker is not None else None
+
+    if final_reason == "operator_stop":
+        operator_stopped = True
+        operator_stop_forced = False
+    elif final_reason == "natural":
+        operator_stopped = False
+        operator_stop_forced = False
+    else:
+        # No FINAL line emitted (e.g. SIGKILL'd before flush). Fall back to
+        # the in-flight flag — if the dispatcher did request a stop, the kill
+        # was operator-driven.
+        operator_stopped = in_flight
+        operator_stop_forced = in_flight and (rc != 0 or rc < 0)
 
     # Apply terminal transition.
     if operator_stopped and not operator_stop_forced:
