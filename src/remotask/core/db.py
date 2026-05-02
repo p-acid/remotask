@@ -136,3 +136,24 @@ def iter_non_terminal_sessions(conn: sqlite3.Connection) -> list[sqlite3.Row]:
         NON_TERMINAL_STATES,
     )
     return cur.fetchall()
+
+
+def get_active_session_by_topic(
+    conn: sqlite3.Connection, topic_id: int
+) -> sqlite3.Row | None:
+    """Return the latest non-terminal session bound to ``topic_id``.
+
+    Used by the dispatcher's termination branch (003): when a stop command
+    arrives in a forum topic, we resolve which session owns that topic to
+    decide whether to signal a worker. Returns ``None`` when no session in
+    that topic is currently active.
+    """
+    cur = _row_cursor(conn)
+    cur.execute(
+        f"SELECT * FROM sessions "
+        f"WHERE topic_id = ? AND status IN ({_NON_TERMINAL_PLACEHOLDERS}) "
+        f"ORDER BY enqueued_at DESC LIMIT 1",
+        (topic_id, *NON_TERMINAL_STATES),
+    )
+    row: sqlite3.Row | None = cur.fetchone()
+    return row

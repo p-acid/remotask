@@ -30,12 +30,14 @@ EV_DAEMON_RESTART: Final = "daemon_restart"
 EV_TELEGRAM_MESSAGE_RECEIVED: Final = "telegram_message_received"
 EV_TELEGRAM_TOPIC_CREATE_FAILED: Final = "telegram_topic_create_failed"
 EV_TELEGRAM_ALREADY_IN_FLIGHT: Final = "telegram_already_in_flight"
+EV_TELEGRAM_TERMINATION_RECEIVED: Final = "telegram_termination_received"
 
 # ---- unbound event types (emitted to the audit logger only) ---------------
 
 EV_TELEGRAM_UNAUTHORIZED: Final = "telegram_unauthorized"
 EV_TELEGRAM_UNKNOWN_PREFIX: Final = "telegram_unknown_prefix"
 EV_LISTENER_DEGRADED: Final = "listener_degraded"
+EV_TELEGRAM_TERMINATION_REJECTED: Final = "telegram_termination_rejected"
 
 
 def record_event(
