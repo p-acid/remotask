@@ -104,14 +104,14 @@ description: "Task list — 005 `/cancel` rename + `[KEY]` prefix + alias deprec
 
 ## Phase 5: User Story 3 — `[KEY]` prefix on session-bound messages (Priority: P2)
 
-**Goal**: Every progress / status / final / canceled message the worker posts to a session's topic begins with `[<issue_key>] `. Templates that already name the issue_key in their body (`Session starting for ZXTL-1234. Worktree: …`, `Draft PR opened: <url>`) skip the prefix to avoid stutter.
+**Goal**: Every progress / status / final / canceled message the worker posts to a session's topic begins with `[<issue_key>]` followed by a single space. Templates that already name the issue_key in their body (`Session starting for ZXTL-1234. Worktree: …`, `Draft PR opened: <url>`) skip the prefix to avoid stutter.
 
-**Independent Test**: Trigger one session and read its topic. Every line in `data-model.md` "Outbound message catalogue" marked Prefixed=Yes begins with `[ZXTL-1234] `. Every line marked Prefixed=No does NOT begin with the prefix.
+**Independent Test**: Trigger one session and read its topic. Every line in `data-model.md` "Outbound message catalogue" marked Prefixed=Yes begins with `[ZXTL-1234]` and a space. Every line marked Prefixed=No does NOT begin with the prefix.
 
 ### Tests for User Story 3
 
 - [X] T022 [P] [US3] Add `tests/unit/test_topic_format.py`: assert `topic.format_progress("ZXTL-1234", "Status: iter 1/5") == "[ZXTL-1234] Status: iter 1/5"`; assert with various keys (synthetic ids `run-2026-…-a3f9b1`) and bodies; one negative case ensures the helper does not strip leading whitespace from `body`
-- [X] T023 [P] [US3] Add `tests/integration/test_key_prefix.py`: trigger a session, capture every outbound message via `tests/fakes/fake_telegram.py`; assert `Session starting for …` and `Draft PR opened: …` (if emitted) do NOT carry the prefix; assert every other progress / `Status:` / final / canceled message begins with `[<issue_key>] `
+- [X] T023 [P] [US3] Add `tests/integration/test_key_prefix.py`: trigger a session, capture every outbound message via `tests/fakes/fake_telegram.py`; assert `Session starting for …` and `Draft PR opened: …` (if emitted) do NOT carry the prefix; assert every other progress / `Status:` / final / canceled message begins with `[<issue_key>]` followed by a space
 
 ### Implementation for User Story 3
 

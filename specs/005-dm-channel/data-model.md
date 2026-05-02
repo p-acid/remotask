@@ -14,7 +14,7 @@
 | `/cancel` rejected from main chat         | `audit.log`                | `slash_command_rejected` row's `reason` field gains `main_chat_cancel` |
 | Deprecated alias used                     | `audit.log`                | New unbound type `alias_deprecation_used` |
 | Curated command registry                  | `telegram/commands.py`     | `CURATED_COMMANDS` becomes `(run, cancel, status)` (drop `done`) |
-| Outbound message templates                | `daemon/topic.py`          | New helper `format_progress(issue_key, body)` applies `[KEY] ` prefix |
+| Outbound message templates                | `daemon/topic.py`          | New helper `format_progress(issue_key, body)` applies the `[KEY]` prefix (with a single trailing space) |
 
 ## Runtime in-memory state addition
 
