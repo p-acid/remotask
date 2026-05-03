@@ -89,7 +89,10 @@ adapter too:
    `owner/repo#N`" reply (Telegram-side UX, not part of the adapter
    contract).
 2. `to_canonical(operator_input: str) -> str` — fs/git-safe canonical key
-   (Jira: identity; GitHub: `gh-<repo>-<n>`).
+   (Jira: identity; GitHub: `gh-<owner>-<repo>-<n>`, e.g.,
+   `gh-p-acid-remotask-42`). The owner segment is included so
+   `sessions.issue_key` stays collision-free when two repos with the
+   same name are registered under different owners.
 3. `extract_project_identifier(canonical_key: str) -> str` — yields the
    `projects.source_identifier` value used by the project lookup. Jira:
    the prefix (`ZXTL`); GitHub: `<owner>/<repo>` reconstructed from the
@@ -139,7 +142,8 @@ safe (`/`, `#`), so the GitHub adapter normalises its key up front via the
 `to_canonical(operator_input)` Protocol method (responsibility #2 above):
 the adapter accepts `owner/repo#N` (or `#N` shorthand against the active
 project mapping) on input from Telegram, then exposes a single fs/git-safe
-canonical key (e.g., `gh-<repo>-<n>`) that flows verbatim through branch
+canonical key (e.g., `gh-<owner>-<repo>-<n>` like
+`gh-p-acid-remotask-42`) that flows verbatim through branch
 names, worktree paths, topic prefixes, DB columns, and the 007 stdout
 protocol. The operator pastes the natural GitHub form; the daemon's
 single-string identity model (D24) stays intact.
@@ -184,7 +188,7 @@ move:
 - `sessions`: two columns are added — `source` TEXT and `project_identifier`
   TEXT — that record which provider and which project produced the session.
   The existing `issue_key` column continues to hold the canonical
-  fs/git-safe key (`ZXTL-1234` / `gh-remotask-42`) used for branch /
+  fs/git-safe key (`ZXTL-1234` / `gh-p-acid-remotask-42`) used for branch /
   worktree / topic / stdout, but `source` + `project_identifier` give the
   CLI / future web GUI a structured handle for grouping and filtering. The
   intent is that an operator can see — in one mixed view — "the first task
@@ -233,7 +237,7 @@ regression, audit event, adapter Protocol consistency).
       `p-acid/remotask` project mapping, when the dispatcher receives an
       inbound message containing `p-acid/remotask#42` (or `#42` shorthand
       against the single configured project), then the GitHub Issue adapter
-      normalises the input to the canonical `gh-remotask-42` key, the
+      normalises the input to the canonical `gh-p-acid-remotask-42` key, the
       dispatcher accepts, and the session goes through the same lifecycle as
       the Jira path — `enqueued → starting → running` transitions, lock
       acquisition, topic creation.
@@ -256,14 +260,14 @@ regression, audit event, adapter Protocol consistency).
 - [ ] AT8 — Given two persisted sessions in `state.db` — one accepted by
       the Jira adapter against project `ZXTL` (issue_key=`ZXTL-1234`) and
       one accepted by the GitHub-Issue adapter against project
-      `p-acid/remotask` (issue_key=`gh-remotask-42`) — when the CLI lists
+      `p-acid/remotask` (issue_key=`gh-p-acid-remotask-42`) — when the CLI lists
       sessions, then each row exposes `source` and `project_identifier` as
       discrete columns so a future GUI can render the two task families
       mixed in one view or filtered to a single `(source, project)` pair.
 - [ ] AT9 — Given a running GitHub-Issue session and an inbound `/cancel`
       slash command on its topic, when the dispatcher routes the cancel,
       then the SIGUSR1 → grace → SIGTERM ladder fires identically to a
-      Jira session (003 / 005 timing intact) and the `[gh-remotask-42] ...`
+      Jira session (003 / 005 timing intact) and the `[gh-p-acid-remotask-42] ...`
       topic prefix is rendered through the same `topic.format_progress`
       chokepoint as `[ZXTL-1234] ...` — the operator-stop and topic-prefix
       surfaces are provider-agnostic.
@@ -327,22 +331,44 @@ Default ordering for behavioural changes is test-first.
         `ctx.adapter.matches(text)`.
       - `dispatcher._handle_slash_run` slash path
         (`daemon/dispatcher.py:617` — current
-        `extract_first_issue_key(first_token) + split_prefix(...)` flow)
-        — replace with `ctx.adapter.matches(first_token) +
-        ctx.adapter.extract_project_identifier(...)`.
+        `extract_first_issue_key(first_token) + split_prefix(...) +
+        rt_projects.by_prefix(...)` flow) — replace with
+        `ctx.adapter.matches(first_token)` →
+        `ctx.adapter.extract_project_identifier(canonical)` →
+        `rt_projects.by_identifier(ctx.conn,
+        source=cfg.agent.task_source, identifier=...)`. The plain-text
+        path's existing `by_prefix(...)` lookup at
+        `daemon/dispatcher.py:134` gets the same `by_identifier`
+        substitution.
 - [ ] T5 — Amend `src/remotask/migrations/V0001__init.sql` in place
       (no V0002): rename `projects.jira_key` → `projects.source_identifier`,
       add `projects.source` TEXT, switch the PK to composite `(source,
       source_identifier)`; add `sessions.source` TEXT and
       `sessions.project_identifier` TEXT. Update `core/projects.py`
-      accessors to take a `source` argument and the session-insert site
-      (`daemon/sessions.py` / `daemon/dispatcher.py:_accept_trigger`) to
-      populate the new pair from the resolved adapter. Document
-      `rm ~/.local/share/remotask/state.db` as the one-line refresh smoke
-      step. Make AT8 green.
+      accessors with the new signatures:
+      - `by_prefix(conn, prefix)` → `by_identifier(conn, source: str,
+        identifier: str) -> ProjectRow | None`
+      - `list_registered_prefixes(conn)` →
+        `list_registered_identifiers(conn, source: str) -> list[str]`
+      - `add(conn, jira_key, repo_path, ...)` →
+        `add(conn, source: str, identifier: str, repo_path, ...)`
+      Update all caller sites: `daemon/dispatcher.py:139` (the "unknown
+      prefix" reply), `daemon/dispatcher.py:_accept_trigger` (session
+      insert populates the new `(source, project_identifier)` pair from
+      the resolved adapter and `cfg.agent.task_source`), and any
+      `commands/projects.py` CLI handlers. Document
+      `rm ~/.local/share/remotask/state.db` as the one-line refresh
+      smoke step. Make AT8 green.
 - [ ] T6 — Implement `GitHubIssueAdapter` in
-      `src/remotask/task_sources/github_issue.py` per the chosen authentication
-      mode. Make AT4 / AT5 / AT7 green.
+      `src/remotask/task_sources/github_issue.py` with constructor
+      `GitHubIssueAdapter(projects: list[ProjectRow])`. The factory
+      filters `rt_projects.list_all(conn)` by `source ==
+      "github_issue"` and injects the result; the adapter uses the list
+      both for `#N` shorthand resolution (the "exactly one row" rule
+      from `matches`) and for the `<owner>/<repo>` reconstruction in
+      `extract_project_identifier`. Authentication reuses host-level
+      `gh auth status` per *Daemon credential posture*. Make AT4 /
+      AT5 / AT7 green.
 - [ ] T7 — Verify the up-front sanitisation inside
       `GitHubIssueAdapter.to_canonical` (per the *Behavior* policy already
       locked in — single fs/git-safe canonical key, no boundary layer)
