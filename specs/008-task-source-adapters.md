@@ -72,6 +72,14 @@ symmetry with Jira's "many prefixes per install" model — the "one active
 provider per install" constraint binds the *provider*, not the *number of
 repos under it*.
 
+The `source` column for the new row is **inferred from
+`cfg.agent.task_source`**, not taken from a CLI flag — installation has one
+active provider, so an explicit `--source` argument would be ceremony. The
+CLI rejects with a clear error when the identifier shape doesn't match the
+active provider (e.g., passing `owner/repo` while `task_source = "jira"`,
+or passing `ZXTL` while `task_source = "github_issue"`); validation runs
+the active adapter's `matches`-style check on the input.
+
 **Adapter responsibilities and factory.** The `TaskSourceAdapter` Protocol
 declares **five** methods. The earlier "three responsibilities" framing
 omitted the project-key extraction step that today's `dispatcher.py`
@@ -133,6 +141,17 @@ block populated only when active:
 - GitHub Issue requires no nested config block — the `owner/repo`
   mapping lives in the `projects` table, and authentication reuses the
   host-level `gh auth status` (see *Daemon credential posture*).
+
+The 004-era `agent.default_project_jira_key` config field (free-text
+`/run <text>` fallback target) is **renamed to `agent.default_project`**
+and made provider-neutral: in Jira mode it holds a prefix (`ZXTL`); in
+GitHub-Issue mode it holds an `owner/repo` (`p-acid/remotask`); empty
+disables the free-text fallback. The validator dispatches on the active
+provider — Jira pattern (`[A-Z]{2,10}`) when `task_source = "jira"`,
+`<owner>/<repo>` shape when `task_source = "github_issue"`. The
+free-text path itself (`synthesize_run_topic_id`, the `run-<ts>-...`
+synthetic identifier) survives unchanged; only the config field name
+and validator move.
 
 **Issue-key textual safety in fs / git.** Today's Jira keys (`ZXTL-1234`)
 land directly in branch names (`agent/ZXTL-1234`), worktree paths
@@ -319,7 +338,18 @@ Default ordering for behavioural changes is test-first.
       `src/remotask/core/config.py` as a **required** enum (no default;
       the pydantic validator rejects empty / missing). Add a nested
       `jira` section with a single `host` field, conditionally required
-      when `agent.task_source == "jira"`. Add an
+      when `agent.task_source == "jira"`. Rename
+      `agent.default_project_jira_key` → `agent.default_project` and
+      replace its validator with a provider-aware dispatch (Jira prefix
+      `[A-Z]{2,10}` when `task_source = "jira"`; `<owner>/<repo>` shape
+      when `task_source = "github_issue"`; empty disables the free-text
+      fallback). Update the
+      `dispatcher._handle_slash_run_free_text` call site
+      (`daemon/dispatcher.py:668`) to read
+      `cfg.agent.default_project` and route through
+      `rt_projects.by_identifier(ctx.conn,
+      source=cfg.agent.task_source, identifier=...)` instead of
+      `by_prefix`. Add an
       `adapter: TaskSourceAdapter` field to `DispatchContext`
       (`daemon/dispatcher.py:46` dataclass), built at daemon startup via
       `get_active_adapter(cfg, conn)` and injected by the runtime
@@ -355,8 +385,11 @@ Default ordering for behavioural changes is test-first.
       Update all caller sites: `daemon/dispatcher.py:139` (the "unknown
       prefix" reply), `daemon/dispatcher.py:_accept_trigger` (session
       insert populates the new `(source, project_identifier)` pair from
-      the resolved adapter and `cfg.agent.task_source`), and any
-      `commands/projects.py` CLI handlers. Document
+      the resolved adapter and `cfg.agent.task_source`), and the
+      `commands/projects.py` CLI handlers — `projects add` infers
+      `source` from `cfg.agent.task_source` and rejects when the
+      `<identifier>` argument doesn't satisfy the active adapter's
+      pattern (B9 policy in *Behavior*). Document
       `rm ~/.local/share/remotask/state.db` as the one-line refresh
       smoke step. Make AT8 green.
 - [ ] T6 — Implement `GitHubIssueAdapter` in
