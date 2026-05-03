@@ -401,7 +401,13 @@ class SdkDriver:
         )
         watchdog = asyncio.create_task(self._interrupt_watchdog())
         try:
-            async for msg in self.client.receive_messages():
+            # ``receive_response`` (vs ``receive_messages``) terminates the
+            # iterator naturally after the SDK yields a ResultMessage — i.e.
+            # when the agent reaches the end of its turn (e.g. via
+            # ``/work-done``). ``receive_messages`` would block indefinitely
+            # waiting for the next message that never comes, leaking the
+            # subprocess. See the SDK docs on ``ClaudeSDKClient.receive_response``.
+            async for msg in self.client.receive_response():
                 if self.state.interrupt_requested.is_set():
                     break
                 self._handle_message(msg)

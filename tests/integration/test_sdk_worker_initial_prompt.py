@@ -56,6 +56,15 @@ class MockClient:
                 # iteration are picked up promptly without a hard busy-spin.
                 continue
 
+    async def receive_response(self):
+        # SdkDriver consumes ``receive_response`` (which terminates after a
+        # ResultMessage). For tests we don't synthesise ResultMessages, so
+        # we delegate to ``receive_messages`` and let ``close()`` end the
+        # iteration. Tests that need the natural-end behaviour drive the
+        # driver via ``client.close()`` instead of a real ResultMessage.
+        async for msg in self.receive_messages():
+            yield msg
+
     async def interrupt(self) -> None:
         self.interrupt_calls += 1
 
