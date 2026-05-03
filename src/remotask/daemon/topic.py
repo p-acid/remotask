@@ -31,11 +31,11 @@ TPL_OPERATOR_STOPPED_FORCED: Final = "Session force-canceled by operator (grace 
 
 TPL_RUN_USAGE_HINT: Final = (
     "Usage: /run <PREFIX>-<NUM>  or  /run <free text> "
-    "(requires agent.default_project_jira_key)"
+    "(requires agent.default_project)"
 )
 TPL_RUN_NO_DEFAULT_PROJECT: Final = (
     "No default project configured. "
-    "Set agent.default_project_jira_key in config.toml or use /run <PREFIX>-<NUM>."
+    "Set agent.default_project in config.toml or use /run <PREFIX>-<NUM>."
 )
 TPL_STATUS_LIST_HEADER: Final = "Active sessions ({count}):"
 TPL_STATUS_LIST_LINE: Final = "{key}    {status}    {iter}    {age}"

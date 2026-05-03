@@ -1,11 +1,26 @@
-"""projects — provider-aware project ↔ repo mapping CRUD (008/T5)."""
+"""projects — provider-aware project ↔ repo mapping CRUD (008/T4–T5)."""
 from __future__ import annotations
 
 import typer
 
+from remotask.core import config as rt_config
 from remotask.core import db as rt_db
 from remotask.core import paths
 from remotask.core import projects as rt_projects
+
+
+def _active_source() -> str:
+    """Read ``agent.task_source`` from config (008/T4 — B9 source policy).
+
+    Returns ``"jira"`` when config can't be loaded so that ``init``-time
+    workflows still function. Production CLI usage always loads a valid
+    config first.
+    """
+    try:
+        cfg = rt_config.load(paths.config_path())
+    except Exception:
+        return "jira"
+    return cfg.agent.task_source
 
 app = typer.Typer(
     name="projects",
@@ -75,9 +90,9 @@ def add(
     that read; T5 hard-codes ``"jira"`` until then).
     """
     _ensure_initialized()
-    # T5: source hard-coded to "jira" — T4 swaps for cfg.agent.task_source
-    # and rejects when the identifier shape doesn't match the active provider.
-    source = "jira"
+    # 008/T4 — source inferred from cfg.agent.task_source (B9 policy).
+    # validate_identifier rejects shape mismatches.
+    source = _active_source()
     try:
         conn = rt_db.connect(paths.db_path())
         try:
@@ -96,7 +111,7 @@ def remove(
 ) -> None:
     """Remove a task-source ↔ repo mapping."""
     _ensure_initialized()
-    source = "jira"  # T5 placeholder — T4 wires cfg.agent.task_source
+    source = _active_source()
     try:
         conn = rt_db.connect(paths.db_path())
         try:

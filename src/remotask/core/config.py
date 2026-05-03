@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import tomli_w
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from remotask.core import secrets as rt_secrets
 
@@ -37,6 +37,9 @@ class InsecurePermissionError(ConfigError):
 # ---------- pydantic models ----------
 
 
+_GH_OWNER_REPO_RE = re.compile(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+")
+
+
 class AgentConfig(BaseModel):
     max_concurrent: int = Field(default=1, ge=1, le=10)
     worktree_root: str = "~/Developments/wt"
@@ -49,19 +52,44 @@ class AgentConfig(BaseModel):
     # to the SIGTERM/SIGKILL ladder from 002. Short by default — the demo
     # placeholder only needs to flush one stdout line.
     operator_stop_grace_seconds: int = Field(default=5, ge=1, le=30)
-    # 004 — Default project jira_key used when a `/run` command's args do not
-    # start with a Jira key. Empty/unset disables the free-text fallback.
-    default_project_jira_key: str = ""
+    # 008/T4 — active task source provider. Default "jira" mirrors the
+    # V0001 schema's column default and keeps existing test paths
+    # untouched; production installs declare this explicitly via config.
+    task_source: Literal["jira", "github_issue"] = "jira"
+    # 008/T4 — provider-neutral free-text fallback (renamed from
+    # default_project_jira_key). Empty/unset disables the fallback.
+    # Validator dispatches on task_source: Jira prefix when "jira", or
+    # owner/repo shape when "github_issue".
+    default_project: str = ""
 
-    @field_validator("default_project_jira_key")
-    @classmethod
-    def _validate_default_project(cls, v: str) -> str:
-        if v and not re.fullmatch(r"[A-Z]{2,10}", v):
-            raise ValueError(
-                "agent.default_project_jira_key must match [A-Z]{2,10} (e.g. ZXTL) "
-                "or be empty to disable the free-text fallback"
-            )
-        return v
+    @model_validator(mode="after")
+    def _validate_default_project(self) -> AgentConfig:
+        if not self.default_project:
+            return self
+        if self.task_source == "jira":
+            if not re.fullmatch(r"[A-Z]{2,10}", self.default_project):
+                raise ValueError(
+                    "agent.default_project must match [A-Z]{2,10} (e.g. ZXTL) "
+                    "when agent.task_source = 'jira'"
+                )
+        elif self.task_source == "github_issue":
+            if not _GH_OWNER_REPO_RE.fullmatch(self.default_project):
+                raise ValueError(
+                    "agent.default_project must match owner/repo (e.g. "
+                    "p-acid/remotask) when agent.task_source = 'github_issue'"
+                )
+        return self
+
+
+class JiraConfig(BaseModel):
+    """Jira-specific config block — populated only when
+    ``agent.task_source == "jira"``. The host is read by
+    ``JiraAdapter.format_issue_url`` and raises at format time when
+    empty (T3); config-load time validation is intentionally lenient so
+    GitHub-Issue installs can leave this section blank.
+    """
+
+    host: str = ""
 
 
 class DaemonConfig(BaseModel):
@@ -111,6 +139,7 @@ class ConfigSchema(BaseModel):
     agent: AgentConfig = Field(default_factory=AgentConfig)
     daemon: DaemonConfig = Field(default_factory=DaemonConfig)
     telegram: TelegramConfig = Field(default_factory=TelegramConfig)
+    jira: JiraConfig = Field(default_factory=JiraConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
 

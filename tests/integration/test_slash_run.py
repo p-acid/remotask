@@ -72,7 +72,7 @@ def _build_cfg(
     cfg.telegram.group_chat_id = fake_tg.chat_id
     cfg.telegram.allowed_user_ids = [99001]
     cfg.agent.worktree_root = str(worktree_root)
-    cfg.agent.default_project_jira_key = default_project
+    cfg.agent.default_project = default_project
     return cfg
 
 

@@ -69,6 +69,12 @@ class DispatchContext:
     # slash commands. None disables suffix matching; suffix-less commands
     # still work.
     bot_username: str | None = None
+    # 008/T4 — active TaskSourceAdapter, built once at daemon startup via
+    # ``get_active_adapter(cfg, conn)``. Both dispatcher call sites
+    # (plain-text + slash) read ``ctx.adapter`` so the daemon stays
+    # provider-agnostic (PRD §6 invariant). ``Any`` typing avoids the
+    # task_sources → dispatcher circular import.
+    adapter: Any = None
 
 
 async def dispatch(message: dict[str, Any], ctx: DispatchContext) -> None:
@@ -124,21 +130,36 @@ async def dispatch(message: dict[str, Any], ctx: DispatchContext) -> None:
         await _handle_slash_command(slash, ctx)
         return
 
-    # ---- parse issue key -------------------------------------------------
-    key = extract_first_issue_key(text)
-    if key is None:
+    # ---- parse issue key (008/T4 — adapter-driven) -----------------------
+    if ctx.adapter is None:
+        # Defensive fallback: if no adapter was injected (legacy test
+        # setup), drop back to the 002 grammar via the parser shim.
+        operator_key = extract_first_issue_key(text)
+        canonical = operator_key
+    else:
+        operator_key = ctx.adapter.matches(text)
+        canonical = (
+            ctx.adapter.to_canonical(operator_key) if operator_key else None
+        )
+    if canonical is None:
         # Casual chat / non-trigger: ignore entirely (FR-008).
         return
 
-    prefix = split_prefix(key)
-    # T5: by_prefix → by_identifier(source, identifier). T4 swaps the
-    # hard-coded "jira" for cfg.agent.task_source.
-    project = rt_projects.by_identifier(ctx.conn, source="jira", identifier=prefix)
+    key = canonical  # legacy variable name preserved through the rest
+    if ctx.adapter is None:
+        prefix = split_prefix(key)
+    else:
+        prefix = ctx.adapter.extract_project_identifier(canonical)
+    project = rt_projects.by_identifier(
+        ctx.conn, source=ctx.cfg.agent.task_source, identifier=prefix
+    )
     if project is None:
         # Unknown prefix (FR-007). Reply in the main chat with the registered
         # prefix list so the operator can correct a typo without leaving
         # Telegram, and emit a non-session-bound audit entry.
-        registered = rt_projects.list_registered_identifiers(ctx.conn, source="jira")
+        registered = rt_projects.list_registered_identifiers(
+            ctx.conn, source=ctx.cfg.agent.task_source
+        )
         await topic.post_to_main_chat(
             ctx.client,
             chat_id=chat,
@@ -203,6 +224,8 @@ async def dispatch(message: dict[str, Any], ctx: DispatchContext) -> None:
         message_id=msg_id,
         project=project,
         ctx=ctx,
+        source=ctx.cfg.agent.task_source,
+        project_identifier=prefix,
     )
 
 
@@ -371,6 +394,8 @@ async def _accept_trigger(
     message_id: int | None,
     project: rt_projects.ProjectRow,
     ctx: DispatchContext,
+    source: str = "jira",
+    project_identifier: str | None = None,
 ) -> str | None:
     """Insert the session row + create the topic + hand off to the worker.
 
@@ -393,6 +418,8 @@ async def _accept_trigger(
             issue_key=issue_key,
             trigger_user=sender_id,
             trigger_text=message_text,
+            source=source,
+            project_identifier=project_identifier,
         )
         sessions.acquire_issue_lock(
             ctx.conn, issue_key=issue_key, session_id=session_id
@@ -616,16 +643,40 @@ async def _handle_slash_run(
     first_token = parts[0]
     rest = parts[1] if len(parts) > 1 else ""
 
-    issue_key_match = extract_first_issue_key(first_token)
-    if issue_key_match is not None and issue_key_match == first_token:
-        # Path (a): Jira-key trigger. Use the existing accept-trigger flow.
-        prefix = split_prefix(issue_key_match)
+    # 008/T4 — adapter-driven recognition. Falls back to the parser shim
+    # when no adapter is injected (legacy test fixtures).
+    if ctx.adapter is None:
+        issue_key_match = extract_first_issue_key(first_token)
+        canonical = issue_key_match
+        if canonical is not None:
+            prefix = split_prefix(canonical)
+        else:
+            prefix = ""
+    else:
+        operator_form = ctx.adapter.matches(first_token)
+        canonical = (
+            ctx.adapter.to_canonical(operator_form) if operator_form else None
+        )
+        prefix = (
+            ctx.adapter.extract_project_identifier(canonical)
+            if canonical
+            else ""
+        )
+        # Path-(a) acceptance keys off ``first_token`` matching the operator
+        # input form (post-adapter). For Jira keys this preserves the
+        # 004 ``issue_key_match == first_token`` invariant; for GitHub
+        # the operator-input form may differ from canonical (e.g.
+        # ``p-acid/remotask#42`` vs ``gh-p-acid-remotask-42``).
+        issue_key_match = canonical if (operator_form == first_token) else None
+
+    if issue_key_match is not None:
+        # Path (a): adapter-recognised key. Use the accept-trigger flow.
         project = rt_projects.by_identifier(
-            ctx.conn, source="jira", identifier=prefix
+            ctx.conn, source=ctx.cfg.agent.task_source, identifier=prefix
         )
         if project is None:
             registered = rt_projects.list_registered_identifiers(
-                ctx.conn, source="jira"
+                ctx.conn, source=ctx.cfg.agent.task_source
             )
             await _reply_to_invocation(
                 ctx,
@@ -654,6 +705,8 @@ async def _handle_slash_run(
             trigger_text=rest,
             project=project,
             ctx=ctx,
+            source=ctx.cfg.agent.task_source,
+            project_identifier=prefix,
         )
         return
 
@@ -666,14 +719,19 @@ async def _handle_slash_run(
 async def _handle_slash_run_free_text(
     invocation: SlashCommandInvocation, ctx: DispatchContext, *, args: str
 ) -> None:
-    """Free-text /run path. Resolves agent.default_project_jira_key.
+    """Free-text /run path. Resolves ``agent.default_project`` (008/T4 —
+    renamed from ``agent.default_project_jira_key``, provider-neutral).
 
     When unset/unregistered → reply with a setup hint and reject.
     When set → synthesise a topic-id and run against the default project.
     """
-    default_key = (ctx.cfg.agent.default_project_jira_key or "").strip()
+    default_key = (ctx.cfg.agent.default_project or "").strip()
     project = (
-        rt_projects.by_identifier(ctx.conn, source="jira", identifier=default_key)
+        rt_projects.by_identifier(
+            ctx.conn,
+            source=ctx.cfg.agent.task_source,
+            identifier=default_key,
+        )
         if default_key
         else None
     )
@@ -702,6 +760,8 @@ async def _handle_slash_run_free_text(
         trigger_text=args,
         project=project,
         ctx=ctx,
+        source=ctx.cfg.agent.task_source,
+        project_identifier=default_key,
     )
 
 
@@ -724,6 +784,8 @@ async def _accept_via_slash(
     trigger_text: str,
     project: rt_projects.ProjectRow,
     ctx: DispatchContext,
+    source: str = "jira",
+    project_identifier: str | None = None,
 ) -> None:
     """Slash-driven equivalent of the 002 accept-trigger flow.
 
@@ -773,6 +835,8 @@ async def _accept_via_slash(
         message_id=invocation.message_id,
         project=project,
         ctx=ctx,
+        source=source,
+        project_identifier=project_identifier,
     )
 
     if new_session_id is not None:

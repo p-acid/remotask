@@ -355,10 +355,16 @@ class Runtime:
     async def _on_message(self, message: dict[str, Any]) -> None:
         """Called by the listener for every accepted text message."""
         assert self._conn is not None and self._client is not None
+        # 008/T4 — build the active task source adapter once at first
+        # dispatch (process-lifetime singleton inside task_sources).
+        from remotask.task_sources import get_active_adapter
+
+        adapter = get_active_adapter(self._cfg, self._conn)
         ctx = rt_dispatcher.DispatchContext(
             conn=self._conn,
             client=self._client,
             cfg=self._cfg,
+            adapter=adapter,
             spawn_worker_task=self._spawn_worker_task,
             worker_argv=self._worker_argv,
             worker_env=self._worker_env,
