@@ -11,7 +11,7 @@ The daemon hands us:
 
 We translate the SDK's bidirectional event stream into the line-oriented
 stdout protocol the daemon already understands (see
-``specs/007-agent-sdk-integration/contracts/sdk-worker-protocol.md``):
+``CHANGELOG.md#v007`` for the feature summary):
 
 - assistant text matching ``PR_URL=(\\S+)`` → stdout ``PR_URL=<url>`` (003).
 - each ``PostToolUse`` hook → stdout ``EVENT agent.tool_use {...}`` (always)
