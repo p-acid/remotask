@@ -72,3 +72,39 @@ def cli_runner(tmp_xdg_env: Path) -> Callable[..., CliResult]:
         return result
 
     return run
+
+
+@pytest.fixture
+def mock_gh_issue_view(monkeypatch: pytest.MonkeyPatch) -> Callable[..., None]:
+    """Intercept ``subprocess.run(["gh", "issue", "view", ...])`` calls (008 AT4 / AT7).
+
+    Returns a ``set_response(json_payload)`` configurator. Tests call it once
+    to install the desired ``gh issue view --json ...`` output, then any
+    code path that shells out to ``gh issue view ...`` receives the canned
+    response without hitting the real GitHub API.
+    """
+    state: dict[str, object] = {"payload": None}
+
+    def _set_response(payload: dict) -> None:
+        import json as _json
+
+        state["payload"] = _json.dumps(payload)
+
+    real_run = subprocess.run
+
+    def _fake_run(cmd, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if (
+            isinstance(cmd, (list, tuple))
+            and len(cmd) >= 3
+            and cmd[0] == "gh"
+            and cmd[1] == "issue"
+            and cmd[2] == "view"
+        ):
+            stdout = state["payload"] or "{}"
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout=stdout, stderr=""
+            )
+        return real_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    return _set_response
