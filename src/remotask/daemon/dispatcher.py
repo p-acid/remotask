@@ -440,6 +440,18 @@ async def _accept_trigger(
             "parsed_key": issue_key,
         },
     )
+    # 008/T8 — single-chokepoint EV_TASK_SOURCE_RESOLVED emission. Covers
+    # both plain-text and slash paths since both flow through here.
+    audit.record_event(
+        ctx.conn,
+        session_id=session_id,
+        type=audit.EV_TASK_SOURCE_RESOLVED,
+        payload={
+            "adapter": source,
+            "source_identifier": project_identifier or "",
+            "canonical_key": issue_key,
+        },
+    )
     ctx.conn.commit()
     log.info("dispatch.accepted", session_id=session_id)
 

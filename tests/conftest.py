@@ -17,6 +17,24 @@ class CliResult:
     stderr: str
 
 
+@pytest.fixture(autouse=True)
+def _reset_task_source_adapter_cache():
+    """Drop the ``get_active_adapter`` singleton between tests (008)."""
+    try:
+        from remotask.task_sources import reset_cache
+
+        reset_cache()
+    except ImportError:
+        pass
+    yield
+    try:
+        from remotask.task_sources import reset_cache
+
+        reset_cache()
+    except ImportError:
+        pass
+
+
 @pytest.fixture
 def tmp_xdg_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Isolate XDG paths to a tmp directory."""

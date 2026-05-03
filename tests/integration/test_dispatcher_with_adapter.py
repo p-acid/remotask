@@ -79,7 +79,7 @@ class TestDispatcherJiraMode:
             client=client,
             cfg=cfg,
             adapter=adapter,
-            spawn_worker_task=lambda c: spawned.append(c),
+            spawn_worker_task=lambda c: (spawned.append(c), c.close())[0],
         )
 
         msg = _message(
@@ -124,7 +124,7 @@ class TestDispatcherJiraRejectsForeignKey:
             client=client,
             cfg=cfg,
             adapter=adapter,
-            spawn_worker_task=lambda c: None,
+            spawn_worker_task=lambda c: c.close(),
         )
 
         msg = _message(
@@ -172,7 +172,7 @@ class TestDispatcherGitHubMode:
             client=client,
             cfg=cfg,
             adapter=adapter,
-            spawn_worker_task=lambda c: None,
+            spawn_worker_task=lambda c: c.close(),
         )
 
         msg = _message(
