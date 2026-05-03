@@ -370,52 +370,6 @@ form was relaxed.
 
 ---
 
-## D24 — Introduce `TaskSourceAdapter`; add GitHub Issue as the second task source (008)
-
-**Decision**: Promote the task source-of-truth (today: Jira; next:
-GitHub Issue) from a hard-pinned assumption to a per-install configurable
-axis. Land the abstraction in feature 008 by bundling three things in one
-spec: (a) extract a `TaskSourceAdapter` interface — issue-key pattern,
-`fetch_context(key)`, `format_issue_url(key)` — (b) retrofit Jira as the
-first concrete implementation, (c) add the GitHub Issue adapter. Exactly
-one provider is active per install (config flag); no provider-prefix
-routing logic is introduced.
-
-**Rationale**: PRD §6's "trigger when a concrete second consumer appears"
-rule is now satisfied — Samuel intends to dogfood remotask development on
-GitHub Issue. Doing the abstraction during the first implementation alone
-would have locked the interface in before the second consumer's actual
-shape was known (the same over-engineering trap §6 calls out for
-messengers); landing both consumers together is the textbook moment to
-extract the interface. Single active provider per install keeps the
-abstraction minimal: dispatcher-side key extraction stays a single
-delegation (`adapter.matches(text)`), no `gh:` / `jira:` prefix grammar
-leaks into the trigger surface, and the "one ingest channel per Telegram
-chat" mental model is preserved. Linear and others stay deferred until a
-third concrete user need appears, per §IV (MVP-First).
-
-**Relation to D1**: D1 ("keep the SoT external; do not model an internal
-workspace") is unchanged. D24 specialises D1 by clarifying that the *which*
-external SoT is configurable — Jira was incidental to the team's actual
-usage in v0.1–v0.3, not a constitutional choice. The "no dual-write, no
-internal workspace" property of D1 holds: each adapter is a thin read /
-URL-format wrapper around an external API.
-
-**Invariants preserved**:
-- Constitution §III (`1 task = 1 worktree = 1 branch`) — task identity
-  remains a single string per session, regardless of which provider
-  produced it.
-- The daemon never holds task-source credentials. Same delegate-down
-  posture as D5 / D7 for GitHub PR creation: the adapter runs on the
-  agent side (or with operator-pre-set OAuth on the worker side); the
-  daemon stays oblivious.
-
-**Spec ref**: `CHANGELOG.md#v008` (when 008 ships).
-
-**Supersedes / Superseded by**: none. Specialises D1; does not supersede.
-
----
-
 ## How to add a new entry
 
 New ARD entry shape:

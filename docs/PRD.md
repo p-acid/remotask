@@ -4,7 +4,7 @@
 > Receives a Jira issue, runs the implementation, opens a Draft PR, and is
 > later monitored via a local web GUI.
 
-- **Owner**: Samuel (acid@mission-driven.kr)
+- **Owner**: p-acid (qkrtkstjd@gmail.com)
 - **Status**: Draft v0.4
 - **Created**: 2026-05-01
 - **Last updated**: 2026-05-03
@@ -252,7 +252,7 @@ SDK + Draft-PR creation is the MVP. Inclusion details:
 ```text
    ┌──────────────────┐
    │   Task source    │  ← read by the agent for issue context
-   │   Jira (today)   │      (GitHub Issue next — see D24)
+   │   Jira (today)   │      (GitHub Issue next — landing in 008)
    └────────┬─────────┘
             │
             ▼
@@ -339,4 +339,4 @@ which provider supplied the issue.
 | 0.1 | 2026-05-01 | Samuel | Initial draft |
 | 0.2 | 2026-05-02 | Samuel | Five-layer doc split: architecture moved to `ARCHITECTURE.md`, decision log to `ARD.md`. Functional-requirement detail / SQLite schema / HTTP-API specs delegated to spec / code; PRD slimmed to product-layer trunk. |
 | 0.3 | 2026-05-03 | Samuel | §6 "Extensibility direction" added — messenger / agent swap cost asymmetry and adoption triggers spelled out. Adapter infrastructure deferred until a concrete second consumer appears. |
-| 0.4 | 2026-05-03 | Samuel | Task source generalised: §1 Direction, §3 persona, and §6 updated to treat the source-of-truth (Jira / GitHub Issue / Linear) as a per-install configurable axis alongside messenger / agent. GitHub Issue is the second concrete provider (008). New decision: ARD D24. |
+| 0.4 | 2026-05-03 | p-acid | Task source generalised: §1 Direction, §2 In-scope, §3 persona, and §6 updated to treat the source-of-truth (Jira / GitHub Issue / Linear) as a per-install configurable axis alongside messenger / agent. GitHub Issue is the second concrete provider, landing in 008 (the matching ARD entry is added in that PR alongside the ARCHITECTURE update, per the "ARD and ARCHITECTURE move together" rule). Owner field updated to p-acid. |
