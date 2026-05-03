@@ -33,6 +33,18 @@ EV_TELEGRAM_ALREADY_IN_FLIGHT: Final = "telegram_already_in_flight"
 EV_TELEGRAM_TERMINATION_RECEIVED: Final = "telegram_termination_received"
 EV_SLASH_COMMAND_RECEIVED: Final = "slash_command_received"
 
+# 007: per-turn agent events emitted by the SDK driver via stdout EVENT lines.
+# Daemon-side ``worker.py`` parses ``EVENT <type> <json>`` and dispatches the
+# payload here. The ``type`` strings are the column values used directly.
+EV_AGENT_TURN: Final = "agent.turn"  # umbrella label for fan-out site only.
+EV_AGENT_TOOL_USE: Final = "agent.tool_use"
+EV_AGENT_TOOL_RESULT: Final = "agent.tool_result"
+EV_AGENT_STOP: Final = "agent.stop"
+EV_AGENT_INTERRUPT: Final = "agent.interrupt"
+AGENT_EVENT_TYPES: Final = frozenset(
+    {EV_AGENT_TOOL_USE, EV_AGENT_TOOL_RESULT, EV_AGENT_STOP, EV_AGENT_INTERRUPT}
+)
+
 # ---- unbound event types (emitted to the audit logger only) ---------------
 
 EV_TELEGRAM_UNAUTHORIZED: Final = "telegram_unauthorized"

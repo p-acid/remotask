@@ -12,6 +12,10 @@ Modes (selected via the ``FAKE_AGENT_MODE`` env var):
 - ``success_no_pr`` — emit nothing of interest and exit 0.
 - ``exit_nonzero`` — write an error to stderr and exit 1.
 - ``hang`` — sleep forever; used to test the per-session timeout watchdog.
+- ``step_then_pr`` (007) — emit one ``STEP <body>`` line, one
+  ``EVENT agent.tool_use {...}`` line, then a ``PR_URL=<url>`` line and a
+  ``FINAL 1 natural`` line. Exercises the daemon's 007 STEP/EVENT pipeline
+  without going through the real claude-agent-sdk.
 
 Other knobs:
 
@@ -60,6 +64,23 @@ def main() -> int:
         # land between iterations and Python can run signal handlers.
         while True:
             time.sleep(0.1)
+    if mode == "step_then_pr":
+        pr_url = os.environ.get("FAKE_AGENT_PR_URL", DEFAULT_PR_URL)
+        # Normalise the body so it always satisfies the daemon STEP regex
+        # (`^STEP (.{1,500})$`): collapse newlines, strip whitespace, cap at
+        # 500 chars, fall back to the default if empty after sanitisation.
+        raw_body = os.environ.get(
+            "FAKE_AGENT_STEP_BODY", "Bash: gh pr create --draft"
+        )
+        step_body = " ".join(raw_body.splitlines()).strip()[:500]
+        if not step_body:
+            step_body = "Bash: gh pr create --draft"
+        sys.stdout.write(f"STEP {step_body}\n")
+        sys.stdout.write('EVENT agent.tool_use {"tool":"Bash","iter":1}\n')
+        sys.stdout.write(f"PR_URL={pr_url}\n")
+        sys.stdout.write("FINAL 1 natural\n")
+        sys.stdout.flush()
+        return 0
     sys.stderr.write(f"unknown FAKE_AGENT_MODE={mode!r}\n")
     return 2
 

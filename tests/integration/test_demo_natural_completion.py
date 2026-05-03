@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sqlite3
+import sys
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,11 @@ from remotask.daemon import dispatcher as rt_dispatcher
 from remotask.telegram.client import TelegramClient
 from tests.fakes.fake_telegram import FakeTelegram
 from tests.fakes.git_repo import make_repo
+
+# 007: daemon's default worker argv now points at sdk_worker. These 003-era
+# tests intentionally pin the demo_worker to keep exercising the placeholder
+# protocol — the real sdk_worker has its own driver-level test suite.
+_DEMO_WORKER_ARGV = [sys.executable, "-m", "remotask.agent.demo_worker"]
 
 
 @pytest.fixture
@@ -105,7 +111,7 @@ async def test_full_natural_completion_flow(
         client=client,
         cfg=cfg,
         spawn_worker_task=spawn_worker_task,
-        worker_argv=None,  # use the default — i.e., remotask.agent.demo_worker
+        worker_argv=_DEMO_WORKER_ARGV,  # 003-era tests pin demo_worker explicitly
         worker_env=env,
     )
 

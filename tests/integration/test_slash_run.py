@@ -9,6 +9,7 @@ import asyncio
 import os
 import re
 import sqlite3
+import sys
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,11 @@ from remotask.daemon import dispatcher as rt_dispatcher
 from remotask.telegram.client import TelegramClient
 from tests.fakes.fake_telegram import FakeTelegram
 from tests.fakes.git_repo import make_repo
+
+# 007: daemon's default worker argv now points at sdk_worker. These 003-era
+# tests intentionally pin the demo_worker to keep exercising the placeholder
+# protocol — the real sdk_worker has its own driver-level test suite.
+_DEMO_WORKER_ARGV = [sys.executable, "-m", "remotask.agent.demo_worker"]
 
 
 @pytest.fixture
@@ -112,7 +118,7 @@ async def test_slash_run_with_jira_key_drives_pr_created(
         client=client,
         cfg=cfg,
         spawn_worker_task=spawn_worker_task,
-        worker_argv=None,
+        worker_argv=_DEMO_WORKER_ARGV,
         worker_env=env,
     )
 
@@ -184,7 +190,7 @@ async def test_slash_run_free_text_uses_default_project(
         client=client,
         cfg=cfg,
         spawn_worker_task=spawn_worker_task,
-        worker_argv=None,
+        worker_argv=_DEMO_WORKER_ARGV,
         worker_env=env,
     )
 
@@ -240,7 +246,7 @@ async def test_slash_run_free_text_without_default_project_replies_hint(
         client=client,
         cfg=cfg,
         spawn_worker_task=lambda coro: coro.close() if hasattr(coro, "close") else None,
-        worker_argv=None,
+        worker_argv=_DEMO_WORKER_ARGV,
         worker_env=None,
     )
 

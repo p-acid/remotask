@@ -1,0 +1,93 @@
+"""FR-017 (a): the driver's first SDK message MUST be ``/work-start <key>``.
+
+We don't actually spin up the ``claude`` CLI here — instead we hand the
+driver a duck-typed mock client that records ``query()`` calls and yields
+a single Stop-shaped message so the run loop terminates immediately.
+"""
+from __future__ import annotations
+
+import asyncio
+import io
+from collections import deque
+from typing import Any
+
+import pytest
+
+from remotask.agent.sdk_worker import DriverState, SdkDriver
+
+
+class MockClient:
+    """Duck-typed minimal stand-in for ``ClaudeSDKClient``.
+
+    Captures ``query()`` calls in ``self.queries`` and yields the messages
+    queued via ``feed()`` from ``receive_messages()``.
+    """
+
+    def __init__(self) -> None:
+        self.queries: list[str] = []
+        self.query_calls: list[tuple[str, str]] = []
+        self._inbox: deque[Any] = deque()
+        self._closed = asyncio.Event()
+        self.interrupt_calls: int = 0
+
+    def feed(self, msg: Any) -> None:
+        self._inbox.append(msg)
+
+    def close(self) -> None:
+        self._closed.set()
+
+    async def query(self, prompt: str, session_id: str = "default") -> None:
+        self.queries.append(prompt)
+        self.query_calls.append((prompt, session_id))
+
+    async def receive_messages(self):
+        # Block on _closed until the inbox has work to do or the producer
+        # signals shutdown. Avoids busy-spinning the event loop in tests
+        # that just want to drive the driver to completion.
+        while True:
+            while self._inbox:
+                yield self._inbox.popleft()
+            if self._closed.is_set() and not self._inbox:
+                return
+            try:
+                await asyncio.wait_for(self._closed.wait(), timeout=0.05)
+            except TimeoutError:
+                # Periodic wake-up so newly-fed items in the same loop
+                # iteration are picked up promptly without a hard busy-spin.
+                continue
+
+    async def receive_response(self):
+        # SdkDriver consumes ``receive_response`` (which terminates after a
+        # ResultMessage). For tests we don't synthesise ResultMessages, so
+        # we delegate to ``receive_messages`` and let ``close()`` end the
+        # iteration. Tests that need the natural-end behaviour drive the
+        # driver via ``client.close()`` instead of a real ResultMessage.
+        async for msg in self.receive_messages():
+            yield msg
+
+    async def interrupt(self) -> None:
+        self.interrupt_calls += 1
+
+
+@pytest.mark.asyncio
+async def test_initial_prompt_is_work_start_with_issue_key() -> None:
+    state = DriverState(
+        issue_key="ZXTL-1234",
+        session_id="sess-1",
+        stdout=io.StringIO(),
+    )
+    client = MockClient()
+    driver = SdkDriver(client, state=state)
+    client.close()  # no inbox messages → loop exits immediately
+
+    rc = await driver.run()
+    assert rc == 0
+
+    assert client.queries == ["/work-start ZXTL-1234"], (
+        f"first SDK query was {client.queries!r}; expected /work-start ZXTL-1234"
+    )
+    # The query MUST be scoped to our session_id rather than falling back to
+    # the SDK's "default" — protects daemon-side audit/lock invariants.
+    assert client.query_calls == [
+        ("/work-start ZXTL-1234", "sess-1")
+    ], f"unexpected (prompt, session_id) tuple: {client.query_calls!r}"
