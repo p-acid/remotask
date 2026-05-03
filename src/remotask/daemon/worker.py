@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import os
 import re
 import signal
@@ -41,6 +42,11 @@ _PR_URL_RE = re.compile(r"^PR_URL=(\S+)\s*$")
 # 003 demo worker stdout protocol — see specs/003-e2e-demo/contracts/worker-stdout-protocol.md.
 _PROGRESS_RE = re.compile(r"^PROGRESS (\d+)/(\d+) (\S+)\s*$")
 _FINAL_RE = re.compile(r"^FINAL (\d+) (\S+)\s*$")
+# 007 SDK worker stdout protocol — see specs/007-agent-sdk-integration/contracts/sdk-worker-protocol.md.
+# STEP carries one human-readable progress line (1..500 chars, no newline).
+# EVENT carries one structured per-turn audit row: ``EVENT <type> <single-line-json>``.
+_STEP_RE = re.compile(r"^STEP (.{1,500})$")
+_EVENT_RE = re.compile(r"^EVENT ([a-z][a-z0-9_]*\.[a-z][a-z0-9_]*) (.+)$")
 _SIGTERM_GRACE = 10.0
 
 
@@ -158,6 +164,8 @@ async def _stream_subprocess_output(
     *,
     progress_handler: Callable[[int, int, str], Awaitable[None]] | None = None,
     final_handler: Callable[[int, str], Awaitable[None]] | None = None,
+    step_handler: Callable[[str], Awaitable[None]] | None = None,
+    event_handler: Callable[[str, dict[str, Any]], Awaitable[None]] | None = None,
 ) -> StreamResult:
     """Tee stdout to ``log_path`` while harvesting marker lines and the stderr tail.
 
@@ -168,6 +176,9 @@ async def _stream_subprocess_output(
     - ``PROGRESS i/N <iso8601>`` — invokes ``progress_handler(i, N, ts)``.
     - ``FINAL <i> <reason>`` — invokes ``final_handler(i, reason)`` and
       records the marker in the result.
+    - ``STEP <body>`` (007) — invokes ``step_handler(body)``.
+    - ``EVENT <type> <json>`` (007) — invokes ``event_handler(type, payload_dict)``.
+      Malformed JSON or unknown types fall through to log-only.
     - Anything else — log-only.
     """
     result = StreamResult()
@@ -213,6 +224,34 @@ async def _stream_subprocess_output(
                             await final_handler(iteration, reason)
                         except Exception as e:  # pragma: no cover — best-effort
                             _log.warning("worker.final_handler_failed", error=str(e))
+                    continue
+
+                m_step = _STEP_RE.match(text)
+                if m_step:
+                    if step_handler is not None:
+                        try:
+                            await step_handler(m_step.group(1))
+                        except Exception as e:  # pragma: no cover — best-effort
+                            _log.warning("worker.step_handler_failed", error=str(e))
+                    continue
+
+                m_event = _EVENT_RE.match(text)
+                if m_event:
+                    ev_type = m_event.group(1)
+                    raw_payload = m_event.group(2)
+                    try:
+                        payload = json.loads(raw_payload)
+                    except json.JSONDecodeError:
+                        _log.warning("worker.event.malformed", line=text[:200])
+                        continue
+                    if not isinstance(payload, dict):
+                        _log.warning("worker.event.payload_not_object", line=text[:200])
+                        continue
+                    if event_handler is not None:
+                        try:
+                            await event_handler(ev_type, payload)
+                        except Exception as e:  # pragma: no cover — best-effort
+                            _log.warning("worker.event_handler_failed", error=str(e))
                     continue
                 # Unmatched lines: log-only (already written above).
 
@@ -367,6 +406,32 @@ async def run_worker(
             ),
         )
 
+    # 007: STEP body lines flow through the same ``[<issue_key>]`` chokepoint as
+    # PROGRESS/FINAL — `format_progress` adds the prefix exactly once.
+    async def _on_step(body: str) -> None:
+        await topic.post_to_topic(
+            client,
+            chat_id=chat_id,
+            topic_id=topic_id,
+            text=topic.format_progress(spec.issue_key, body),
+        )
+
+    # 007: EVENT lines that match the agent.* whitelist become session_events
+    # rows. Unknown types are dropped with a warning so the column never
+    # accumulates ad-hoc strings.
+    async def _on_event(ev_type: str, payload: dict[str, Any]) -> None:
+        if ev_type not in audit.AGENT_EVENT_TYPES:
+            _log.warning(
+                "worker.event.unknown_type",
+                session_id=spec.session_id,
+                type=ev_type,
+            )
+            return
+        audit.record_event(
+            conn, session_id=spec.session_id, type=ev_type, payload=payload
+        )
+        conn.commit()
+
     timed_out = False
     timeout = spec.timeout_seconds
     stream_task = asyncio.create_task(
@@ -375,6 +440,8 @@ async def run_worker(
             log_path,
             progress_handler=_on_progress,
             final_handler=_on_final,
+            step_handler=_on_step,
+            event_handler=_on_event,
         )
     )
     try:
@@ -615,15 +682,14 @@ def _signal_name(rc: int) -> str | None:
 def _default_worker_argv() -> list[str]:
     """Argv for the production worker entrypoint.
 
-    Points at ``remotask.agent.demo_worker`` (003) — a deterministic
-    placeholder workload that streams ``PROGRESS`` / ``FINAL`` lines to
-    stdout and honours ``SIGUSR1`` as a cooperative stop signal. A real
-    claude-agent-sdk driver will replace this in a future feature without
-    changing the daemon-side wiring.
+    007 onwards: points at ``remotask.agent.sdk_worker`` — the real
+    ``claude-agent-sdk`` driver. Replaces the 003 ``demo_worker``
+    placeholder. ``demo_worker`` remains importable so 003-era integration
+    tests can pin it explicitly via ``WorkerSpec.argv``.
     """
     import sys as _sys
 
-    return [_sys.executable, "-m", "remotask.agent.demo_worker"]
+    return [_sys.executable, "-m", "remotask.agent.sdk_worker"]
 
 
 def make_worktree_root(cfg: rt_config.AgentConfig) -> Path:

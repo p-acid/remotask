@@ -81,7 +81,8 @@ Phase 2의 HTTP/WebSocket API와 React 웹 GUI는 위 다이어그램의 daemon 
 | **Listener** | `src/remotask/daemon/listener.py` | Telegram Bot API long-poll. 인바운드 message를 dispatcher로 넘긴다. |
 | **Dispatcher** | `src/remotask/daemon/dispatcher.py` | 메시지 → 의도 분기. 화이트리스트 게이트, slash-command branch (`/run`/`/cancel`/`/status`), 평문 issue-key 트리거 branch, 거부 경로 audit. |
 | **Session lifecycle** | `src/remotask/daemon/sessions.py` | 상태 전이, topic_id 바인딩, lock acquisition/release, 토픽 메시지 포스팅 chokepoint. |
-| **Worker** | `src/remotask/daemon/worker.py` | git worktree 생성, agent subprocess spawn, PROGRESS/FINAL stdout 파싱, SIGUSR1 그레이스 래더, 종료 transition. |
+| **Worker** | `src/remotask/daemon/worker.py` | git worktree 생성, agent subprocess spawn, PROGRESS/FINAL/STEP/EVENT stdout 파싱, SIGUSR1 그레이스 래더, 종료 transition. |
+| **SDK driver** | `src/remotask/agent/sdk_worker.py` | claude-agent-sdk 호출 wrapper (007). `/work-start <key>` 초기 prompt 송신, PostToolUse/Stop 훅을 STEP/EVENT 라인으로 변환, PreToolUse 훅으로 헌법 §VI deny-list 강제, SIGUSR1 → `client.interrupt()` 협조적 종료. |
 | **Topic formatter** | `src/remotask/daemon/topic.py` | `format_progress(issue_key, body)` 단일 chokepoint로 모든 세션-바운드 outbound 메시지에 `[<issue_key>]` prefix 부여 + 표준 템플릿 보유. |
 | **Telegram client / parser / commands** | `src/remotask/telegram/` | Bot API 호출, 메시지 파싱(`extract_first_issue_key`, `match_slash_command`), `setMyCommands` 큐레이션 셋. |
 | **Audit** | `src/remotask/daemon/audit.py` | 세션-바운드 이벤트는 `session_events` 테이블, 비-바운드(거부·인증 실패)는 `audit.log`로 분리. |
@@ -156,7 +157,7 @@ Phase 2의 HTTP/WebSocket API와 React 웹 GUI는 위 다이어그램의 daemon 
 - **언어/런타임**: Python 3.11+, uv 패키지 매니저
 - **CLI**: typer
 - **HTTP**: httpx (Telegram client)
-- **Agent**: claude-agent-sdk (CLI OAuth credential 위임, 별도 API key 불필요)
+- **Agent**: claude-agent-sdk (CLI OAuth credential 위임, 별도 API key 불필요). 007부터 production path가 `remotask.agent.sdk_worker`를 통해 SDK를 직접 구동(`demo_worker`는 003-style 회귀 테스트용으로만 잔존).
 - **데이터**: SQLite (V0001 schema), WAL mode
 - **로깅**: structlog (JSON lines)
 - **데몬 관리**: launchd (macOS)
@@ -178,6 +179,7 @@ Phase 2 도입 예정: FastAPI + uvicorn (HTTP/WebSocket), React 19 + Vite + Tai
 | `004-slash-commands` | `setMyCommands`, `/run` grammar, `/status`, slash-command dispatch |
 | `005-dm-channel` | `/cancel` 캐노니컬, `[<issue_key>]` prefix chokepoint, 별칭 deprecation |
 | `006-remove-termination-aliases` | deprecation 별칭 4개 완전 제거 |
+| `007-agent-sdk-integration` | placeholder `demo_worker` → 진짜 claude-agent-sdk driver(`agent/sdk_worker.py`), STEP/EVENT 라인 셰이프 super-set, driver-level deny-list 훅, agent-side Draft PR 생성 |
 
 각 feature의 spec/plan/research/data-model/contracts/quickstart는
 `specs/<feature>/` 아래에 보존되며, 이 문서들이 해당 시점의 SoT다.

@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sqlite3
+import sys
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,11 @@ from remotask.daemon import dispatcher as rt_dispatcher
 from remotask.telegram.client import TelegramClient
 from tests.fakes.fake_telegram import FakeTelegram
 from tests.fakes.git_repo import make_repo
+
+# 007: daemon's default worker argv now points at sdk_worker. These 003-era
+# tests intentionally pin the demo_worker to keep exercising the placeholder
+# protocol — the real sdk_worker has its own driver-level test suite.
+_DEMO_WORKER_ARGV = [sys.executable, "-m", "remotask.agent.demo_worker"]
 
 
 @pytest.fixture
@@ -133,7 +139,7 @@ async def test_slash_cancel_in_topic_drives_canceled(
         client=client,
         cfg=cfg,
         spawn_worker_task=spawn_worker_task,
-        worker_argv=None,
+        worker_argv=_DEMO_WORKER_ARGV,
         worker_env=env,
         mark_operator_stop_in_flight=lambda sid, pid: (
             in_flight.add(sid),
@@ -231,7 +237,7 @@ async def test_slash_cancel_in_main_chat_is_silently_rejected(
         client=client,
         cfg=cfg,
         spawn_worker_task=lambda coro: coro.close() if hasattr(coro, "close") else None,
-        worker_argv=None,
+        worker_argv=_DEMO_WORKER_ARGV,
         worker_env=None,
     )
 

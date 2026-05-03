@@ -25,7 +25,7 @@ Working rules for AI agents:
 5. **Active feature plan 포인터**(아래)는 `/speckit-plan`이 갱신한다. 다른 곳에서
    임의로 바꾸지 않는다.
 
-Active feature plan: *(none — main 브랜치 기준 idle)*
+Active feature plan: [`specs/007-agent-sdk-integration/plan.md`](./specs/007-agent-sdk-integration/plan.md) — placeholder demo_worker → real claude-agent-sdk driver, `/work-start`+`/work-done` flow, bypassPermissions + driver-level deny-list
 
 Prior features (foundational; still authoritative):
 - `specs/006-remove-termination-aliases/plan.md` — deprecation 별칭 4개 완전 제거

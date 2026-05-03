@@ -6,6 +6,7 @@ inserts (no real worker) so the test runs in milliseconds.
 from __future__ import annotations
 
 import sqlite3
+import sys
 import time
 import uuid
 from pathlib import Path
@@ -18,6 +19,11 @@ from remotask.core import paths as rt_paths
 from remotask.daemon import dispatcher as rt_dispatcher
 from remotask.telegram.client import TelegramClient
 from tests.fakes.fake_telegram import FakeTelegram
+
+# 007: daemon's default worker argv now points at sdk_worker. These 003-era
+# tests intentionally pin the demo_worker to keep exercising the placeholder
+# protocol — the real sdk_worker has its own driver-level test suite.
+_DEMO_WORKER_ARGV = [sys.executable, '-m', 'remotask.agent.demo_worker']
 
 
 @pytest.fixture
@@ -55,7 +61,7 @@ def _build_ctx(conn, client, cfg) -> rt_dispatcher.DispatchContext:
         client=client,
         cfg=cfg,
         spawn_worker_task=lambda coro: coro.close() if hasattr(coro, "close") else None,
-        worker_argv=None,
+        worker_argv=_DEMO_WORKER_ARGV,
         worker_env=None,
     )
 
