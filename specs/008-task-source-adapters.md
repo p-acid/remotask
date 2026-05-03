@@ -370,6 +370,16 @@ All seven principles evaluated. No waiver required.
   The contract is: daemon emits `<bootstrap-prompt> <canonical-key>`; the
   bootstrap consumes the key and uses `TaskSourceAdapter` for any
   provider-specific work.
+- The operator-portability requirement that motivated removing
+  `/work-start` from this spec body surfaced a parallel gap in the 4-skill
+  spec pipeline itself: an early draft that embedded the slash-skill name
+  passed `validate-spec` / `check-constitution` / `sharpen-spec` cleanly.
+  The follow-up — a `check-constitution` rule C6 ("Operator-portability"),
+  a `docs/templates/SPEC.md` Behavior-section guidance line, and "흔한
+  실수" bullets in `create-spec` and `sharpen-spec` — is parked in
+  `.claude/skills/spec-pipeline.md` 백로그 section and will land as a
+  separate `chore: spec pipeline — operator-portability 게이트` PR after
+  008 merges. Tracking only; not an 008 deliverable.
 - Forward-looking (out of 008's scope per *Out-of-scope*): once the CLI /
   web GUI exposes `sessions.source` + `sessions.project_identifier` as
   filter / group-by columns, an operator can render a mixed view such as
