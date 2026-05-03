@@ -98,14 +98,19 @@ status`. Adding a separate PAT just for issue reads would only enlarge the
 credential surface — a read-scoped PAT is strictly weaker than the existing
 `gh` token, which already covers the PR-write path.
 
-**`/work-start` skill branching.** The agent today is invoked with a literal
-`/work-start <key>` prompt (`agent/sdk_worker.py:398-401`). The prompt
-string stays unchanged across providers: a single `/work-start <key>` skill
-internally consults `adapter.fetch_context(key)` and branches on the active
-provider inside the skill itself. This keeps PRD §6's invariant ("the daemon
-stays oblivious to which provider supplied the issue") — provider names
-never leak into the daemon's prompt-composition path. The stdout protocol
-(007 super-set) is unchanged.
+**Agent bootstrap prompt.** The daemon's worker driver composes a single
+bootstrap prompt that carries the canonical key — and *only* the canonical
+key — to the agent subprocess (the literal string today lives at
+`agent/sdk_worker.py:398-401`). The prompt does **not** encode the active
+provider's identity, name a specific operator-side automation, or branch
+on `agent.task_source`. Any provider-aware behaviour (issue-context fetch,
+PR back-link, status transition) is the responsibility of the agent-side
+bootstrap, treated by this spec as an opaque operator-supplied script that
+consumes a canonical key and resolves it through the `TaskSourceAdapter`
+interface. This keeps the daemon spec operator-portable (different
+operators may wire different bootstrap scripts) and preserves PRD §6's
+invariant that the daemon is oblivious to which provider supplied the
+issue. The stdout protocol (007 super-set) is unchanged.
 
 **Schema (V0001 amended in place).** The project is in single-operator
 pre-release state with no other users, so we edit `V0001__init.sql`
@@ -255,10 +260,12 @@ Default ordering for behavioural changes is test-first.
       mode. Make AT4 / AT5 / AT7 green.
 - [ ] T7 — Implement the sanitisation layer (boundary or up-front, per the
       chosen *Behavior* policy). Make AT6 green.
-- [ ] T8 — Update the agent driver (`agent/sdk_worker.py`) per the chosen
-      `/work-start` branching policy (single skill, adapter-internal
-      branch). Wire `EV_TASK_SOURCE_RESOLVED` emission in the dispatcher's
-      accept path. Confirm AT9 / AT10 green.
+- [ ] T8 — Confirm `agent/sdk_worker.py:398-401` composes the bootstrap
+      prompt from the canonical key alone (no provider name, no
+      `agent.task_source` value, no operator-script identifier baked in).
+      Wire `EV_TASK_SOURCE_RESOLVED` emission in the dispatcher's accept
+      path. Confirm AT9 / AT10 green. The operator-side bootstrap
+      automation itself is out of scope per *Out-of-scope*.
 - [ ] T9 — Update `docs/ARCHITECTURE.md` with the new `task_sources/` module
       row in §2 component table, the `agent.task_source` config field in §7,
       and a feature row in §8. Append D24 to `docs/ARD.md` (text recoverable
@@ -282,6 +289,13 @@ Default ordering for behavioural changes is test-first.
   ensures the schema (`sessions.source` + `sessions.project_identifier`)
   carries the structured data that view will need; the rendering is a
   separate spec.
+- The operator-side bootstrap automation that resolves the canonical key
+  into per-provider context (today: a Claude Code slash skill at
+  `~/.claude/skills/<name>/`; could equally be a shell script, a CLI
+  wrapper, or any other operator-supplied artefact). 008 specifies only
+  the daemon-side prompt shape and the `TaskSourceAdapter` Protocol;
+  concrete bootstrap automations live outside this PR and are not subject
+  to its review.
 
 ## Constitution check
 
@@ -349,6 +363,13 @@ All seven principles evaluated. No waiver required.
   single-operator pre-release state. A formal V0002 with backfill logic
   would have run against zero existing rows; the simpler choice aligns with
   CLAUDE.md §2 ("Simplicity First — no abstractions for single-use code").
+- ARD D22 (007) records `/work-start` as the current operator's
+  bootstrap realisation. 008's spec body intentionally avoids hard-coding
+  that name so future operators can wire their own bootstrap (different
+  skill name, plain shell script, etc.) without re-spec'ing the daemon.
+  The contract is: daemon emits `<bootstrap-prompt> <canonical-key>`; the
+  bootstrap consumes the key and uses `TaskSourceAdapter` for any
+  provider-specific work.
 - Forward-looking (out of 008's scope per *Out-of-scope*): once the CLI /
   web GUI exposes `sessions.source` + `sessions.project_identifier` as
   filter / group-by columns, an operator can render a mixed view such as
