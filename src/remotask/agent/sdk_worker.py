@@ -265,7 +265,13 @@ class SdkDriver:
 
     async def run(self) -> int:
         """Drive the session to completion. Returns the desired exit code (0 or 1)."""
-        await self.client.query(f"/work-start {self.state.issue_key}")
+        # Pin the SDK session id to ours so the request never falls back to
+        # the SDK's "default" session — the daemon's audit/lock model assumes
+        # a 1:1 mapping between session_events.session_id and the SDK side.
+        await self.client.query(
+            f"/work-start {self.state.issue_key}",
+            session_id=self.state.session_id,
+        )
         watchdog = asyncio.create_task(self._interrupt_watchdog())
         try:
             async for msg in self.client.receive_messages():
@@ -312,14 +318,10 @@ class SdkDriver:
 
     async def _interrupt_watchdog(self) -> None:
         await self.state.interrupt_requested.wait()
-        _emit_event(
-            self.state,
-            "agent.interrupt",
-            {"iter_at_interrupt": self.state.iter},
-        )
-        # Even if the SDK can't interrupt cleanly we still emit FINAL so the
-        # daemon transitions us to canceled rather than guessing from the
-        # in-flight flag (which it will fall back to anyway).
+        # Try the SDK interrupt FIRST, then emit the audit event. The audit
+        # row therefore reflects an *attempted* interrupt that has already
+        # returned (or errored). Emitting before the await would have logged
+        # a successful-looking interrupt even on timeout/SDK failure.
         try:
             await asyncio.wait_for(
                 self.client.interrupt(), timeout=_INTERRUPT_DRAIN_TIMEOUT
@@ -330,6 +332,11 @@ class SdkDriver:
             )
         except Exception as e:  # pragma: no cover — defensive log only
             sys.stderr.write(f"sdk_worker: client.interrupt() failed: {e!r}\n")
+        _emit_event(
+            self.state,
+            "agent.interrupt",
+            {"iter_at_interrupt": self.state.iter},
+        )
         _emit(self.state, f"FINAL {self.state.iter} operator_stop")
 
 

@@ -25,6 +25,7 @@ class MockClient:
 
     def __init__(self) -> None:
         self.queries: list[str] = []
+        self.query_calls: list[tuple[str, str]] = []
         self._inbox: deque[Any] = deque()
         self._closed = asyncio.Event()
         self.interrupt_calls: int = 0
@@ -37,6 +38,7 @@ class MockClient:
 
     async def query(self, prompt: str, session_id: str = "default") -> None:
         self.queries.append(prompt)
+        self.query_calls.append((prompt, session_id))
 
     async def receive_messages(self):
         # Block on _closed until the inbox has work to do or the producer
@@ -75,3 +77,8 @@ async def test_initial_prompt_is_work_start_with_issue_key() -> None:
     assert client.queries == ["/work-start ZXTL-1234"], (
         f"first SDK query was {client.queries!r}; expected /work-start ZXTL-1234"
     )
+    # The query MUST be scoped to our session_id rather than falling back to
+    # the SDK's "default" — protects daemon-side audit/lock invariants.
+    assert client.query_calls == [
+        ("/work-start ZXTL-1234", "sess-1")
+    ], f"unexpected (prompt, session_id) tuple: {client.query_calls!r}"
