@@ -72,17 +72,59 @@ symmetry with Jira's "many prefixes per install" model — the "one active
 provider per install" constraint binds the *provider*, not the *number of
 repos under it*.
 
+**Adapter responsibilities and factory.** The `TaskSourceAdapter` Protocol
+declares **five** methods. The earlier "three responsibilities" framing
+omitted the project-key extraction step that today's `dispatcher.py`
+performs via `split_prefix(issue_key)` against the Jira-flavoured prefix —
+once the key shape is no longer Jira-only, that step has to live in the
+adapter too:
+
+1. `matches(text: str) -> str | None` — adapter-owned grammar; returns the
+   *operator-input form* of an issue key found in `text` (Jira:
+   `ZXTL-1234`; GitHub: `owner/repo#42` or the active-project `#42`
+   shorthand) or `None`.
+2. `to_canonical(operator_input: str) -> str` — fs/git-safe canonical key
+   (Jira: identity; GitHub: `gh-<repo>-<n>`).
+3. `extract_project_identifier(canonical_key: str) -> str` — yields the
+   `projects.source_identifier` value used by the project lookup. Jira:
+   the prefix (`ZXTL`); GitHub: `<owner>/<repo>` reconstructed from the
+   canonical key + the active project mapping the adapter was built with.
+4. `fetch_context(canonical_key: str) -> ContextPayload` — read-only
+   issue context for the agent-side bootstrap.
+5. `format_issue_url(canonical_key: str) -> str` — source-issue back-link
+   target used by the topic chokepoint.
+
+The factory is `get_active_adapter(cfg, conn) -> TaskSourceAdapter` — it
+takes both the config *and* the SQLite connection, because the GitHub
+adapter's `#N` shorthand resolution must consult the active project
+mapping at construction time. `cfg` alone is insufficient. The factory
+caches a single instance per process and rebuilds when config changes.
+
+**Provider-specific config fields.** `agent.task_source` is the
+active-provider switch; each adapter may require its own nested config
+block populated only when active:
+
+- `jira.host` (string, conditionally required when
+  `agent.task_source == "jira"`) — base hostname used by
+  `JiraAdapter.format_issue_url(key)` (e.g., `mission.atlassian.net`).
+  The pydantic validator rejects an empty `jira.host` when the active
+  source is Jira; the field is ignored otherwise.
+- GitHub Issue requires no nested config block — the `owner/repo`
+  mapping lives in the `projects` table, and authentication reuses the
+  host-level `gh auth status` (see *Daemon credential posture*).
+
 **Issue-key textual safety in fs / git.** Today's Jira keys (`ZXTL-1234`)
 land directly in branch names (`agent/ZXTL-1234`), worktree paths
 (`<root>/ZXTL-1234`), topic prefixes (`[ZXTL-1234] ...`), and DB columns. The
 GitHub-Issue identifier shape contains characters that are not fs- or git-ref
-safe (`/`, `#`), so the GitHub adapter normalises its key up front: the
-adapter accepts `owner/repo#N` (or `#N` shorthand against the active project
-mapping) on input from Telegram, then exposes a single fs/git-safe canonical
-key (e.g., `gh-<repo>-<n>`) that flows verbatim through branch names,
-worktree paths, topic prefixes, DB columns, and the 007 stdout protocol. The
-operator pastes the natural GitHub form; the daemon's single-string
-identity model (D24) stays intact.
+safe (`/`, `#`), so the GitHub adapter normalises its key up front via the
+`to_canonical(operator_input)` Protocol method (responsibility #2 above):
+the adapter accepts `owner/repo#N` (or `#N` shorthand against the active
+project mapping) on input from Telegram, then exposes a single fs/git-safe
+canonical key (e.g., `gh-<repo>-<n>`) that flows verbatim through branch
+names, worktree paths, topic prefixes, DB columns, and the 007 stdout
+protocol. The operator pastes the natural GitHub form; the daemon's
+single-string identity model (D24) stays intact.
 
 **PR back-link.** When the agent emits `PR_URL=...`, the topic post that
 quotes the source issue link uses `adapter.format_issue_url(key)` so the
@@ -213,11 +255,13 @@ regression, audit event, adapter Protocol consistency).
       carrying `{adapter: "<name>", source_identifier: "<id>",
       canonical_key: "<key>"}` and no other audit shape changes.
 - [ ] AT11 — Given both `JiraAdapter` and `GitHubIssueAdapter` instances,
-      when each is exercised against the `TaskSourceAdapter` Protocol
-      surface (issue-key pattern matching, `fetch_context` shape,
-      `format_issue_url` shape), then both return values matching the
-      Protocol's documented types — verified at runtime by a parametrised
-      test that runs the same assertions against each adapter.
+      when each is exercised against the full `TaskSourceAdapter` Protocol
+      surface (`matches` / `to_canonical` /
+      `extract_project_identifier` / `fetch_context` /
+      `format_issue_url`), then every method on every adapter returns a
+      value matching the Protocol's documented type — verified at runtime
+      by a parametrised test that runs the same assertions against each
+      adapter.
 
 ## Tasks
 
@@ -232,19 +276,34 @@ Default ordering for behavioural changes is test-first.
       `tests/daemon/test_cancel_provider_agnostic.py` (AT9)). Run the
       suite: confirm each new test fails for the expected reason (red).
 - [ ] T2 — Define `TaskSourceAdapter` Protocol in
-      `src/remotask/task_sources/__init__.py` with the three responsibilities
-      (issue-key pattern / `fetch_context` / `format_issue_url`). No
-      implementation yet — just the interface plus a `get_active_adapter(cfg)`
-      factory.
-- [ ] T3 — Implement `JiraAdapter` in `src/remotask/task_sources/jira.py`
-      that wraps the existing 002 regex and the existing Jira URL convention.
-      Make AT1 / AT2 / AT3 green. Delete `_ISSUE_KEY_RE` from
-      `telegram/parser.py:15` (or have it delegate to the active adapter).
+      `src/remotask/task_sources/__init__.py` with the **five** Protocol
+      methods (`matches` / `to_canonical` /
+      `extract_project_identifier` / `fetch_context` /
+      `format_issue_url`) and the `ContextPayload` typed shape returned by
+      `fetch_context`. Add the `get_active_adapter(cfg, conn)` factory —
+      caches one instance per process, rebuilds when config changes. No
+      adapter implementation yet — just the interface.
+- [ ] T3 — Implement `JiraAdapter` in `src/remotask/task_sources/jira.py`.
+      Absorb the 002 `_ISSUE_KEY_RE` (`telegram/parser.py:15`) into
+      `JiraAdapter.matches`; absorb `split_prefix`
+      (`telegram/parser.py:29`) into
+      `JiraAdapter.extract_project_identifier`. Remove both from
+      `telegram/parser.py`. `JiraAdapter.format_issue_url` reads
+      `cfg.jira.host`. Make AT1 / AT2 / AT3 green.
 - [ ] T4 — Add `agent.task_source` config field to
       `src/remotask/core/config.py` as a **required** enum (no default; the
-      pydantic validator rejects empty / missing). Wire the dispatcher's
-      `extract_first_issue_key` call site to consult `get_active_adapter(cfg)`
-      instead of the bare regex.
+      pydantic validator rejects empty / missing). Add a nested `jira`
+      section with a single `host` field, conditionally required when
+      `agent.task_source == "jira"`. Wire **both** dispatcher call sites
+      to consult `get_active_adapter(cfg, conn)` (the same active instance):
+      - `dispatcher.dispatch` plain-text path
+        (`daemon/dispatcher.py:128` — current `extract_first_issue_key(text)`
+        call) — replace with `adapter.matches(text)`.
+      - `dispatcher._handle_slash_run` slash path
+        (`daemon/dispatcher.py:617` — current
+        `extract_first_issue_key(first_token) + split_prefix(...)` flow)
+        — replace with `adapter.matches(first_token) +
+        adapter.extract_project_identifier(...)`.
 - [ ] T5 — Amend `src/remotask/migrations/V0001__init.sql` in place
       (no V0002): rename `projects.jira_key` → `projects.source_identifier`,
       add `projects.source` TEXT, switch the PK to composite `(source,
@@ -260,16 +319,25 @@ Default ordering for behavioural changes is test-first.
       mode. Make AT4 / AT5 / AT7 green.
 - [ ] T7 — Implement the sanitisation layer (boundary or up-front, per the
       chosen *Behavior* policy). Make AT6 green.
-- [ ] T8 — Confirm `agent/sdk_worker.py:398-401` composes the bootstrap
-      prompt from the canonical key alone (no provider name, no
-      `agent.task_source` value, no operator-script identifier baked in).
-      Wire `EV_TASK_SOURCE_RESOLVED` emission in the dispatcher's accept
-      path. Confirm AT9 / AT10 green. The operator-side bootstrap
+- [ ] T8 — Add the `EV_TASK_SOURCE_RESOLVED` constant to
+      `daemon/audit.py` (alongside the existing `EV_*` family). Confirm
+      `agent/sdk_worker.py:398-401` composes the bootstrap prompt from the
+      canonical key alone (no provider name, no `agent.task_source` value,
+      no operator-script identifier baked in). Wire
+      `EV_TASK_SOURCE_RESOLVED` emission inside the dispatcher's
+      `_accept_trigger` (single chokepoint — covers both plain-text and
+      slash paths). Confirm AT9 / AT10 green. The operator-side bootstrap
       automation itself is out of scope per *Out-of-scope*.
-- [ ] T9 — Update `docs/ARCHITECTURE.md` with the new `task_sources/` module
-      row in §2 component table, the `agent.task_source` config field in §7,
-      and a feature row in §8. Append D24 to `docs/ARD.md` (text recoverable
-      from `git show 72a2beb -- docs/ARD.md`).
+- [ ] T9 — Update `docs/ARCHITECTURE.md`: §2 component table gains a
+      `TaskSourceAdapter` row pointing at `src/remotask/task_sources/`;
+      §7 mentions `agent.task_source` and the conditional `jira.host`;
+      §8 gains an `008-task-source-adapters` feature row. §3 ("Process &
+      data layout") is intentionally untouched — schema detail stays in
+      the V0001 SQL file and §3 only references the path. Append D24 to
+      `docs/ARD.md` (text recoverable via `git show 72a2beb -- docs/ARD.md`;
+      verify the SHA is reachable with `git cat-file -e 72a2beb` before
+      starting, since 72a2beb is on the merged-via-squash 008 ancestor and
+      could in principle become unreachable after aggressive `git gc`).
 - [ ] T10 — Run the full suite + a manual smoke (one Jira-mode session and
       one GitHub-Issue-mode session against a real repo). All acceptance
       tests green; no regression on 003 / 005 / 007 paths.
@@ -334,7 +402,8 @@ All seven principles evaluated. No waiver required.
   itself carries `source` + `project_identifier` as discrete columns
   (AT8) — structured data the CLI / future web GUI can group on without
   parsing the canonical key; (b) one new event type
-  `EV_TASK_SOURCE_RESOLVED` is appended to `session_events` per accept
+  `EV_TASK_SOURCE_RESOLVED` is added to `daemon/audit.py` (T8) and
+  emitted from the dispatcher's `_accept_trigger` chokepoint per accept
   (AT10). No change to log rotation policy, audit-log format, or
   `audit.log` path.
 
@@ -380,6 +449,29 @@ All seven principles evaluated. No waiver required.
   `.claude/skills/spec-pipeline.md` 백로그 section and will land as a
   separate `chore: spec pipeline — operator-portability 게이트` PR after
   008 merges. Tracking only; not an 008 deliverable.
+- A second pipeline gap surfaced when the spec was re-read with an
+  *implementer's* eye: the four-skill chain caught no implementation-
+  readiness issues (adapter-responsibility count drift from 3 to 4, factory
+  signature ambiguity, dispatcher's two call sites flattened to one,
+  missing audit-constant definition site, etc.). All of these were closed
+  inline in this spec, but the gap itself is parked in the same
+  `spec-pipeline.md` 백로그 section (entry: `implementation-readiness`
+  검증 게이트) and will follow operator-portability as another chore PR.
+- **Deployment checklist** (operator-owned, since V0001 is amended in
+  place). On 008 merge: (1) drain active sessions; (2) stop daemon
+  (`launchctl unload` / `remotask daemon stop`);
+  (3) `rm ~/.local/share/remotask/state.db`; (4) pull main + reinstall
+  (`uv tool install -e .`); (5) edit `~/.config/remotask/config.toml` —
+  add `agent.task_source = "jira" | "github_issue"` (required, no
+  default) plus the matching `[jira] host = "..."` block when `jira` is
+  the active source; (6) restart daemon. Adjacent items that don't gate
+  merge but may surface during smoke: `gh auth status` scope (full-OAuth
+  login covers `issue:read` automatically; fine-grained PATs may need it
+  added), the operator's own `/work-start` skill needs internal logic that
+  consults the active adapter (D22 callout above), and pytest fixtures
+  must mock `subprocess.run(["gh", "issue", "view", ...])` so AT4 / AT7
+  don't hit the real GitHub API (mock interface lives in
+  `tests/conftest.py`, added in T1).
 - Forward-looking (out of 008's scope per *Out-of-scope*): once the CLI /
   web GUI exposes `sessions.source` + `sessions.project_identifier` as
   filter / group-by columns, an operator can render a mixed view such as
