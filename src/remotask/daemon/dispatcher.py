@@ -131,12 +131,14 @@ async def dispatch(message: dict[str, Any], ctx: DispatchContext) -> None:
         return
 
     prefix = split_prefix(key)
-    project = rt_projects.by_prefix(ctx.conn, prefix)
+    # T5: by_prefix → by_identifier(source, identifier). T4 swaps the
+    # hard-coded "jira" for cfg.agent.task_source.
+    project = rt_projects.by_identifier(ctx.conn, source="jira", identifier=prefix)
     if project is None:
         # Unknown prefix (FR-007). Reply in the main chat with the registered
         # prefix list so the operator can correct a typo without leaving
         # Telegram, and emit a non-session-bound audit entry.
-        registered = rt_projects.list_registered_prefixes(ctx.conn)
+        registered = rt_projects.list_registered_identifiers(ctx.conn, source="jira")
         await topic.post_to_main_chat(
             ctx.client,
             chat_id=chat,
@@ -618,9 +620,13 @@ async def _handle_slash_run(
     if issue_key_match is not None and issue_key_match == first_token:
         # Path (a): Jira-key trigger. Use the existing accept-trigger flow.
         prefix = split_prefix(issue_key_match)
-        project = rt_projects.by_prefix(ctx.conn, prefix)
+        project = rt_projects.by_identifier(
+            ctx.conn, source="jira", identifier=prefix
+        )
         if project is None:
-            registered = rt_projects.list_registered_prefixes(ctx.conn)
+            registered = rt_projects.list_registered_identifiers(
+                ctx.conn, source="jira"
+            )
             await _reply_to_invocation(
                 ctx,
                 invocation,
@@ -667,7 +673,9 @@ async def _handle_slash_run_free_text(
     """
     default_key = (ctx.cfg.agent.default_project_jira_key or "").strip()
     project = (
-        rt_projects.by_prefix(ctx.conn, default_key) if default_key else None
+        rt_projects.by_identifier(ctx.conn, source="jira", identifier=default_key)
+        if default_key
+        else None
     )
     if project is None:
         await _reply_to_invocation(

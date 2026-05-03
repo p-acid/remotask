@@ -87,7 +87,7 @@ async def test_same_issue_retrigger_is_rejected_with_topic_pointer(
     fake_tg: FakeTelegram,
     repo: Path,
 ) -> None:
-    rt_projects.add(conn, "ZXTL", str(repo), base_branch="main")
+    rt_projects.add(conn, source="jira", identifier="ZXTL", repo_path=str(repo), base_branch="main")
     cfg = _build_cfg(fake_tg, max_concurrent=2, worktree_root=tmp_path / "wt")
     client = TelegramClient(fake_tg.bot_token, transport=fake_tg.transport())
 
@@ -139,7 +139,7 @@ async def test_max_concurrent_cap_rejects_extra_issue(
     fake_tg: FakeTelegram,
     repo: Path,
 ) -> None:
-    rt_projects.add(conn, "ZXTL", str(repo), base_branch="main")
+    rt_projects.add(conn, source="jira", identifier="ZXTL", repo_path=str(repo), base_branch="main")
     # Cap = 1 → second different issue must be rejected.
     cfg = _build_cfg(fake_tg, max_concurrent=1, worktree_root=tmp_path / "wt")
     client = TelegramClient(fake_tg.bot_token, transport=fake_tg.transport())
@@ -181,7 +181,7 @@ async def test_two_distinct_issues_both_complete_independently(
     fake_tg: FakeTelegram,
     repo: Path,
 ) -> None:
-    rt_projects.add(conn, "ZXTL", str(repo), base_branch="main")
+    rt_projects.add(conn, source="jira", identifier="ZXTL", repo_path=str(repo), base_branch="main")
     cfg = _build_cfg(fake_tg, max_concurrent=2, worktree_root=tmp_path / "wt")
     client = TelegramClient(fake_tg.bot_token, transport=fake_tg.transport())
 
