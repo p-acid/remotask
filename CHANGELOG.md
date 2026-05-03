@@ -130,7 +130,9 @@ FINAL-emit race guard, deny-list hardening, and so on).
 
 Retired `specs/`'s 7-file pattern in favour of the single-file spec +
 append-only `CHANGELOG.md` model. Moved the constitution from
-`.specify/memory/constitution.md` to the root as `CONSTITUTION.md`. Removed
-`.specify/` and `.claude/skills/speckit-*` entirely. `CLAUDE.md` was
-rewritten as Karpathy-style behavioural principles (§1–§4, verbatim) plus a
-§5 of project conventions. All durable docs were unified to English.
+`.specify/memory/constitution.md` to the root as `CONSTITUTION.md`. Relocated
+`PRD.md` / `ARCHITECTURE.md` / `ARD.md` under `docs/`, and the spec template
+under `docs/templates/SPEC.md`. Removed `.specify/` and
+`.claude/skills/speckit-*` entirely. `CLAUDE.md` was rewritten as
+Karpathy-style behavioural principles (§1–§4, verbatim) plus a §5 of project
+conventions. All durable docs unified to English.

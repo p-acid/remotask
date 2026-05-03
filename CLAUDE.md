@@ -67,18 +67,18 @@ This project keeps four durable documents at the root. Treat each as the **sourc
 | Layer | File | What it answers |
 |-------|------|-----------------|
 | Principles | [`CONSTITUTION.md`](./CONSTITUTION.md) | Non-negotiable rules |
-| Product | [`PRD.md`](./PRD.md) | Who, why, what is built / MVP scope / scenarios |
-| System definition | [`ARCHITECTURE.md`](./ARCHITECTURE.md) | How the system looks right now |
-| Decision history | [`ARD.md`](./ARD.md) | Why this shape was chosen (D1, D2, …) |
+| Product | [`docs/PRD.md`](./docs/PRD.md) | Who, why, what is built / MVP scope / scenarios |
+| System definition | [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | How the system looks right now |
+| Decision history | [`docs/ARD.md`](./docs/ARD.md) | Why this shape was chosen (D1, D2, …) |
 
 Completed-work history lives in [`CHANGELOG.md`](./CHANGELOG.md) — one short section per feature with PR and ARD references. Append-only.
 
 ### Working rules
 
-1. **Constitution wins.** Conflict order: `CONSTITUTION.md` > `PRD.md` > `ARCHITECTURE.md` > `ARD.md` > everything else. Constitutional amendments go in their own PR.
-2. **Spec-driven, but lightweight.** Non-trivial changes live in a single file at `specs/NNN-<name>.md` (motivation + behavior + acceptance + tasks inline). No folders, no plan/research/contracts/quickstart split. Bug fixes under 30 minutes touching ≤1 file are exempt.
-3. **`ARCHITECTURE.md` and `ARD.md` move together.** When system shape changes, `ARCHITECTURE.md` is updated; when the decision is new, `ARD.md` gets a new entry (`DNN`). Old entries are not overwritten — supersession is recorded as a new entry.
-4. **`PRD.md` is the product layer.** Implementation detail (schemas, API signatures, directory trees, …) lives in `ARCHITECTURE.md`, the spec, or the code itself — not in `PRD.md`.
+1. **Constitution wins.** Conflict order: `CONSTITUTION.md` > `docs/PRD.md` > `docs/ARCHITECTURE.md` > `docs/ARD.md` > everything else. Constitutional amendments go in their own PR.
+2. **Spec-driven, but lightweight.** Non-trivial changes live in a single file at `specs/NNN-<name>.md`, derived from [`docs/templates/SPEC.md`](./docs/templates/SPEC.md) (motivation + behavior + acceptance tests + tasks inline). No folders, no plan/research/contracts/quickstart split. Bug fixes under 30 minutes touching ≤1 file are exempt.
+3. **`docs/ARCHITECTURE.md` and `docs/ARD.md` move together.** When system shape changes, `docs/ARCHITECTURE.md` is updated; when the decision is new, `docs/ARD.md` gets a new entry (`DNN`). Old entries are not overwritten — supersession is recorded as a new entry.
+4. **`docs/PRD.md` is the product layer.** Implementation detail (schemas, API signatures, directory trees, …) lives in `docs/ARCHITECTURE.md`, the spec, or the code itself — not in `docs/PRD.md`.
 5. **Add a `CHANGELOG.md` section on feature merge.** PR link + key change summary + related ARD entry numbers. 5–15 lines.
 6. **Spec files are disposable after merge.** Once merged, the spec file does not need to be retained — `CHANGELOG.md` is the durable record.
 

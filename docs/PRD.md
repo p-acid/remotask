@@ -11,10 +11,10 @@
 - **Reference**: [multica-ai/multica](https://github.com/multica-ai/multica)
 
 > This document is the source of truth for the **product layer**.
-> "Non-negotiable principles" → [`CONSTITUTION.md`](./CONSTITUTION.md);
+> "Non-negotiable principles" → [`CONSTITUTION.md`](../CONSTITUTION.md);
 > "current shape of the system" → [`ARCHITECTURE.md`](./ARCHITECTURE.md);
 > "why this shape was chosen" → [`ARD.md`](./ARD.md);
-> "spec for each change" → the corresponding `specs/<feature>.md`.
+> "spec for each change" → the corresponding `../specs/<feature>.md`.
 
 ---
 

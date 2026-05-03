@@ -17,8 +17,8 @@ Remote agent trigger for Claude Code via Telegram. 휴대폰에서 `/run ZXTL-12
 
 ## Status
 
-Phase 1 (MVP) 완료. Phase 2(웹 GUI)는 예정. 자세한 범위는 [`PRD.md`](./PRD.md) §2,
-현재까지 머지된 feature stack은 [`ARCHITECTURE.md`](./ARCHITECTURE.md) §8 참조.
+Phase 1 (MVP) 완료. Phase 2(웹 GUI)는 예정. 자세한 범위는 [`docs/PRD.md`](./docs/PRD.md) §2,
+현재까지 머지된 feature stack은 [`CHANGELOG.md`](./CHANGELOG.md) 또는 [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) §8 참조.
 
 ## Install
 
@@ -37,9 +37,8 @@ remotask daemon status                         # ✓ running
 ```
 
 Telegram 측 셋업(봇 생성, supergroup forum 활성화, 화이트리스트 추가)은
-`remotask init` 마법사 안내에 따라 진행한다. 채널 이용 흐름은 각 feature의
-quickstart 문서가 가장 정확하다 — 가장 최근 것은
-[`specs/006-remove-termination-aliases/quickstart.md`](./specs/006-remove-termination-aliases/quickstart.md).
+`remotask init` 마법사 안내에 따라 진행한다. 작업 흐름의 최신 변경 이력은
+[`CHANGELOG.md`](./CHANGELOG.md)에서 확인.
 
 ## CLI
 
@@ -85,12 +84,14 @@ uv run mypy src/remotask/core/
 
 | 문서 | 답하는 질문 |
 |------|-------------|
-| [`.specify/memory/constitution.md`](./.specify/memory/constitution.md) | 절대 어기지 않는 원칙 |
-| [`PRD.md`](./PRD.md) | 누가, 왜, 무엇을/안 만드는가 (제품 layer) |
-| [`ARCHITECTURE.md`](./ARCHITECTURE.md) | 무엇이 어떻게 생겼는가 (현재 시스템 정의) |
-| [`ARD.md`](./ARD.md) | 왜 이 시스템 구조를 골랐는가 (결정 이력) |
-| [`specs/<feature>/`](./specs) | 구체 변경의 명세 / 회귀 테스트 의도 |
-| [`CLAUDE.md`](./CLAUDE.md) | AI agent 런타임 인덱스 (현재 active plan 포인터) |
+| [`CONSTITUTION.md`](./CONSTITUTION.md) | 절대 어기지 않는 원칙 |
+| [`docs/PRD.md`](./docs/PRD.md) | 누가, 왜, 무엇을/안 만드는가 (제품 layer) |
+| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | 무엇이 어떻게 생겼는가 (현재 시스템 정의) |
+| [`docs/ARD.md`](./docs/ARD.md) | 왜 이 시스템 구조를 골랐는가 (결정 이력) |
+| [`CHANGELOG.md`](./CHANGELOG.md) | feature 단위 머지 history |
+| [`CLAUDE.md`](./CLAUDE.md) | AI agent 행동 가이드 (Karpathy §1~§4 + §5 컨벤션) |
+| [`docs/templates/SPEC.md`](./docs/templates/SPEC.md) | 단일-파일 spec 템플릿 (TDD-explicit) |
 
-새 feature는 `/speckit-specify` → `/speckit-plan` → `/speckit-tasks` →
-`/speckit-implement` 흐름을 따른다 (헌법 §V).
+새 feature는 [`docs/templates/SPEC.md`](./docs/templates/SPEC.md) 템플릿을
+복사해 `specs/NNN-<name>.md` 단일 파일로 작성한다 — TDD-explicit. 머지 후
+`CHANGELOG.md`에 5~15줄 entry 추가. (헌법 §V — `CONSTITUTION.md` 참조)

@@ -4,7 +4,7 @@
 > "what does the system look like right now."
 > "Why these decisions were made" → [`ARD.md`](./ARD.md).
 > "What we are building" → [`PRD.md`](./PRD.md).
-> "Which principles are non-negotiable" → [`CONSTITUTION.md`](./CONSTITUTION.md).
+> "Which principles are non-negotiable" → [`CONSTITUTION.md`](../CONSTITUTION.md).
 
 ---
 
@@ -194,7 +194,7 @@ To be introduced in Phase 2: FastAPI + uvicorn (HTTP / WebSocket), React 19
 
 The system evolves feature by feature. Per-feature history (motivation +
 core outcome + PR / ARD references) lives in
-[`CHANGELOG.md`](./CHANGELOG.md). The current feature stack:
+[`CHANGELOG.md`](../CHANGELOG.md). The current feature stack:
 
 | Feature | Core deliverable |
 |---------|------------------|
@@ -210,11 +210,11 @@ core outcome + PR / ARD references) lives in
 
 | Looking for | Read |
 |-------------|------|
-| Non-negotiable principles | `CONSTITUTION.md` |
-| Product identity / MVP scope / scenarios | `PRD.md` |
-| **Current shape of the system (this document)** | `ARCHITECTURE.md` |
-| **Why this shape (D1, D2, …)** | `ARD.md` |
-| Per-feature history (PR + ARD references) | `CHANGELOG.md` |
-| Spec for a specific change | `specs/<feature>.md` (single-file) |
-| Onboarding | `README.md` |
-| The code itself | `src/remotask/` |
+| Non-negotiable principles | `../CONSTITUTION.md` |
+| Product identity / MVP scope / scenarios | `./PRD.md` |
+| **Current shape of the system (this document)** | `./ARCHITECTURE.md` |
+| **Why this shape (D1, D2, …)** | `./ARD.md` |
+| Per-feature history (PR + ARD references) | `../CHANGELOG.md` |
+| Spec for a specific change | `../specs/<feature>.md` (single-file) |
+| Onboarding | `../README.md` |
+| The code itself | `../src/remotask/` |
