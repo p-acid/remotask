@@ -69,6 +69,49 @@ async def test_interrupt_event_drives_cooperative_finalisation() -> None:
 
 
 @pytest.mark.asyncio
+async def test_final_emitted_once_under_stop_then_interrupt_race() -> None:
+    """FINAL must appear exactly once even when Stop hook ran first AND
+    a SIGUSR1 follows during teardown. Without the ``final_emitted`` guard
+    the driver would emit both ``FINAL natural`` and ``FINAL operator_stop``
+    and confuse the daemon-side terminal-state classifier.
+    """
+    from remotask.agent.sdk_worker import (
+        DriverState,
+        SdkDriver,
+        make_stop_hook,
+    )
+
+    state = DriverState(
+        issue_key="ZXTL-RACE",
+        session_id="sess-race",
+        stdout=io.StringIO(),
+    )
+    state.iter = 4
+
+    # Simulate the natural-completion path firing first.
+    stop = make_stop_hook(state)
+    await stop(
+        {"hook_event_name": "Stop", "stop_hook_active": True},  # type: ignore[arg-type]
+        None,
+        {"signal": None},  # type: ignore[arg-type]
+    )
+
+    # Now SIGUSR1 lands — the watchdog body would normally try to emit
+    # ``FINAL operator_stop`` next. Drive it through the public surface.
+    client = MockClient()
+    client.close()
+    driver = SdkDriver(client, state=state)
+    state.interrupt_requested.set()
+    await driver.run()
+
+    out = state.stdout.getvalue()
+    final_lines = [ln for ln in out.splitlines() if ln.startswith("FINAL ")]
+    assert final_lines == ["FINAL 4 natural"], (
+        f"FINAL must be emitted exactly once (winner: natural); got {final_lines!r}"
+    )
+
+
+@pytest.mark.asyncio
 async def test_natural_stop_when_no_interrupt() -> None:
     """If no interrupt is fired, the Stop hook (not under test here, exercised
     elsewhere) is the one that emits FINAL natural — the watchdog stays

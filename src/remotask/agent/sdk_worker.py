@@ -80,6 +80,11 @@ class DriverState:
     pr_url_emitted: bool = False
     last_step_emit: dict[str, float] = field(default_factory=dict)
     interrupt_requested: asyncio.Event = field(default_factory=asyncio.Event)
+    # Single-shot guard for the terminal FINAL line. Stop hook and the
+    # SIGUSR1 watchdog can race during teardown — only the first writer
+    # gets to emit. Single-threaded asyncio makes plain bool check-and-set
+    # atomic (no await between read and write).
+    final_emitted: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +145,21 @@ def _emit(state: DriverState, line: str) -> None:
 
 def _emit_event(state: DriverState, type_: str, payload: dict[str, Any]) -> None:
     _emit(state, f"EVENT {type_} {json.dumps(payload, separators=(',', ':'))}")
+
+
+def _emit_final_once(state: DriverState, reason: str) -> None:
+    """Emit ``FINAL <iter> <reason>`` exactly once per driver lifetime.
+
+    Stop hook (`reason="natural"`) and SIGUSR1 watchdog (`reason="operator_stop"`)
+    can both reach the terminal-line emission path during teardown. Without a
+    guard, both can fire and the daemon-side parser would see two FINALs with
+    contradictory reasons. Single-threaded asyncio makes this plain bool flip
+    atomic — no await between read and write.
+    """
+    if state.final_emitted:
+        return
+    state.final_emitted = True
+    _emit(state, f"FINAL {state.iter} {reason}")
 
 
 # ---------------------------------------------------------------------------
@@ -219,7 +239,7 @@ def make_stop_hook(state: DriverState):
             "agent.stop",
             {"iter": state.iter, "reason": "natural"},
         )
-        _emit(state, f"FINAL {state.iter} natural")
+        _emit_final_once(state, "natural")
         return {}
 
     return on_stop
@@ -337,7 +357,7 @@ class SdkDriver:
             "agent.interrupt",
             {"iter_at_interrupt": self.state.iter},
         )
-        _emit(self.state, f"FINAL {self.state.iter} operator_stop")
+        _emit_final_once(self.state, "operator_stop")
 
 
 def _extract_assistant_text(msg: Any) -> str:
