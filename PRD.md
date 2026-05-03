@@ -4,9 +4,9 @@
 > Jira 이슈를 받아 자동으로 구현·PR 생성까지 진행하고, 향후 웹 GUI로 모니터링한다.
 
 - **Owner**: Samuel (acid@mission-driven.kr)
-- **Status**: Draft v0.2
+- **Status**: Draft v0.3
 - **작성일**: 2026-05-01
-- **마지막 갱신**: 2026-05-02
+- **마지막 갱신**: 2026-05-03
 - **레퍼런스**: [multica-ai/multica](https://github.com/multica-ai/multica)
 
 > 이 문서는 **제품 layer**의 진실 원천이다.
@@ -184,7 +184,61 @@
 
 ---
 
-## 6. 참고 자료
+## 6. 확장 지향점 — 메신저·Agent 교체 가능성
+
+> 본 절은 **현재 만들지 않는 것**을 명시하기 위한 지향점이다. 실제 어댑터·플러그인
+> 인프라는 두 번째 구체 수요(다른 메신저 또는 다른 agent)가 발생할 때 spec을
+> 통해 도입한다. 헌법 §IV "MVP-First" 정합.
+
+### 파이프라인 모양 (현재)
+
+```
+[Messenger 서비스] ──▶ [remotask daemon] ──▶ [AI Agent subprocess]
+   Telegram                                       claude-agent-sdk
+   (Slack 등 추후)                                  (Codex 등 추후)
+```
+
+세 단계는 이미 분리돼 있다. 003부터 worker는 stdout protocol(현재 5종 라인 셰이프)
+만 말하면 되는 별도 프로세스이고, 헌법 v1.1.0(ARD D19)은 Telegram 채널 매핑을
+presentation-layer로 분리해 두었다.
+
+### 비대칭한 교체 비용
+
+- **AI Agent 교체 — 저비용**. `src/remotask/agent/<name>_worker.py`로 새 driver를
+  추가하고 동일 stdout protocol(`PR_URL=` / `PROGRESS` / `FINAL` / `STEP` /
+  `EVENT`)만 emit하면 daemon-side 변경은 거의 없다. config flag로
+  `_default_worker_argv()`만 분기하면 된다. 신규 추상화 불필요.
+- **Messenger 교체 — 고비용**. `dispatcher.py` / `listener.py` / `topic.py` /
+  `runtime.py`에 Telegram 개념(forum topic, `message_thread_id`, Bot API,
+  `setMyCommands`, bot_command entity)이 직접 박혀 있다. Slack 등을 붙이려면
+  `MessengerAdapter` 인터페이스(receive_inbound · send_outbound ·
+  create_session_channel · parse_command · format_session_label)를 추출하고
+  dispatcher가 그 추상에만 의존하도록 뒤집어야 한다.
+
+### 도입 트리거 (when, not now)
+
+- **새 agent 도입 시점**: 사용자가 두 번째 agent(예: Codex CLI)를 1주 이상
+  일상으로 쓰겠다는 결정이 있을 때. spec 한 개로 driver 추가 + config flag
+  도입(짧은 feature). Adapter 같은 큰 추상화는 필요 없다.
+- **새 messenger 도입 시점**: 두 번째 메신저(예: Slack)를 같은 의미에서 실제로
+  쓰겠다는 결정이 있을 때, 또는 ARD D3에 약속된 Phase 5 진입 시. 그 시점에 spec
+  으로 (a) MessengerAdapter 추출, (b) Telegram을 그 첫 구현체로 retrofit,
+  (c) 두 번째 어댑터 추가 — 세 단계를 한 feature로 묶는 게 over-engineering이
+  안 되는 가장 안전한 패턴. 첫 어댑터일 때 추상화하면 두 번째 어댑터의 실제
+  요구사항을 모른 채 인터페이스를 박는다.
+
+### 도입 전 / 후 invariants
+
+- 헌법 §III(`1 issue = 1 worktree = 1 branch`)는 어떤 메신저·어떤 agent로도
+  바뀌지 않는다.
+- stdout protocol(007 super-set)은 agent-agnostic이며 늘어나기는 해도 줄어들지
+  않는다.
+- daemon은 GitHub API 자격증명을 보유하지 않는다(D5/Q1) — agent-side에서 PR
+  생성, daemon은 URL relay만.
+
+---
+
+## 7. 참고 자료
 
 - Multica: https://github.com/multica-ai/multica
 - Claude Agent SDK (Python): `claude-agent-sdk`
@@ -193,9 +247,10 @@
 
 ---
 
-## 7. 변경 이력
+## 8. 변경 이력
 
 | 버전 | 날짜 | 작성자 | 내용 |
 |---|---|---|---|
 | 0.1 | 2026-05-01 | Samuel | 최초 초안 작성 |
 | 0.2 | 2026-05-02 | Samuel | 5-layer 문서 분리: 아키텍처 정의를 `ARCHITECTURE.md`, 결정 로그를 `ARD.md`로 이동. 기능 요구사항 디테일·SQLite 스키마·HTTP API 명세는 spec/code SoT로 위임하고 PRD를 제품 layer 근간으로 슬림화. |
+| 0.3 | 2026-05-03 | Samuel | §6 "확장 지향점" 추가 — Messenger·Agent 교체 가능성, 비대칭 교체 비용, 도입 트리거를 명시. 어댑터 인프라는 두 번째 구체 수요 시점까지 보류. |
