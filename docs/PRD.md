@@ -5,7 +5,7 @@
 > later monitored via a local web GUI.
 
 - **Owner**: Samuel (acid@mission-driven.kr)
-- **Status**: Draft v0.3
+- **Status**: Draft v0.4
 - **Created**: 2026-05-01
 - **Last updated**: 2026-05-03
 - **Reference**: [multica-ai/multica](https://github.com/multica-ai/multica)
@@ -43,8 +43,10 @@
 
 ### Direction
 
-- Keep Jira as the source of truth and build a thin self-hosted tool that
-  lets the **local Claude Code session be triggered from a phone**.
+- Keep the **task source-of-truth external** (Jira for this team today;
+  GitHub Issue / Linear / … selectable per install) and build a thin
+  self-hosted tool that lets the **local Claude Code session be triggered
+  from a phone**.
 - The trigger channel is Telegram; the monitoring GUI will eventually be a
   local web app.
 - Work output is a GitHub PR; the human performs the final merge from the
@@ -56,10 +58,10 @@
 
 ### In-scope
 
-- Trigger a local Claude Code session remotely by referencing a Jira issue
-  via a Telegram message.
-- Read the Jira issue context (title, description, comments) automatically
-  and act on it.
+- Trigger a local Claude Code session remotely by referencing a task
+  (Jira issue / GitHub Issue / …) via a Telegram message.
+- Read the task context (title, description, comments) from the active
+  task source automatically and act on it.
 - Auto-open a Draft PR when the agent produces output and post the link to
   Telegram.
 - Run multiple sessions safely in parallel (worktree-based isolation).
@@ -105,7 +107,9 @@ SDK + Draft-PR creation is the MVP. Inclusion details:
 ### Primary persona
 
 - **Samuel** — single-user self-host. Claude Code Pro / Max subscriber, on
-  macOS. Already uses Jira / GitHub / Telegram daily.
+  macOS. Already uses Jira / GitHub / Telegram daily. Picks **one task
+  source per install** (Jira for the day-job repos, GitHub Issue for
+  personal / OSS repos including remotask itself).
 
 ### Core scenarios
 
@@ -236,28 +240,43 @@ SDK + Draft-PR creation is the MVP. Inclusion details:
 
 ---
 
-## 6. Extensibility direction — messenger / agent swap
+## 6. Extensibility direction — task source / messenger / agent swap
 
 > This section is intentional about **what we are NOT building right now**.
-> The actual adapter / plug-in infrastructure will land via a spec when a
-> concrete second consumer (a different messenger or a different agent)
-> appears. Aligned with Constitution §IV (MVP-First).
+> The actual adapter / plug-in infrastructure lands via a spec when a
+> concrete second consumer (a different task source, a different messenger,
+> or a different agent) appears. Aligned with Constitution §IV (MVP-First).
 
 ### Pipeline shape (today)
 
 ```text
+   ┌──────────────────┐
+   │   Task source    │  ← read by the agent for issue context
+   │   Jira (today)   │      (GitHub Issue next — see D24)
+   └────────┬─────────┘
+            │
+            ▼
 [ Messenger service ] ──▶ [ remotask daemon ] ──▶ [ AI agent subprocess ]
    Telegram                                          claude-agent-sdk
    (Slack later)                                     (Codex etc. later)
 ```
 
-The three stages are already separated. From 003 onward, the worker is an
+The four stages are separated by design. From 003 onward, the worker is an
 isolated subprocess speaking a small stdout protocol (5 line shapes today),
 which is agent-agnostic. Constitution v1.1.0 (ARD D19) explicitly
-delegated Telegram-channel mapping to the presentation layer.
+delegated Telegram-channel mapping to the presentation layer. The
+task-source provider is consulted inside the agent's worktree (read-only
+context fetch + later PR back-link), so the daemon stays oblivious to
+which provider supplied the issue.
 
 ### Asymmetric swap costs
 
+- **Task-source swap — cheap (with one config flag).** A
+  `TaskSourceAdapter` that declares (a) issue-key pattern, (b)
+  `fetch_context(key)`, (c) `format_issue_url(key)` is enough; one active
+  provider per install. The dispatcher delegates `extract_first_issue_key`
+  to the adapter; the agent skill consults the same interface for context.
+  No messenger-layer change.
 - **AI agent swap — cheap.** Drop in
   `src/remotask/agent/<name>_worker.py` that emits the same stdout
   protocol (`PR_URL=` / `PROGRESS` / `FINAL` / `STEP` / `EVENT`); virtually
@@ -273,6 +292,12 @@ delegated Telegram-channel mapping to the presentation layer.
 
 ### Adoption triggers (when, not now)
 
+- **New task source**: trigger now (008). Samuel is dogfooding remotask
+  development on GitHub Issue, satisfying the "concrete second consumer"
+  rule. The 008 feature bundles three things: (a) extract
+  `TaskSourceAdapter`, (b) retrofit Jira as the first implementation,
+  (c) add the GitHub Issue adapter. Linear and others stay deferred until
+  another concrete user need appears.
 - **New agent**: trigger when a second agent (e.g., Codex CLI) is going to
   be used daily for at least a week. One short feature: add the driver +
   config flag. No adapter needed.
@@ -287,12 +312,14 @@ delegated Telegram-channel mapping to the presentation layer.
 
 ### Invariants before / after
 
-- Constitution §III (`1 issue = 1 worktree = 1 branch`) is invariant under
-  any messenger / agent swap.
+- Constitution §III (`1 task = 1 worktree = 1 branch`) is invariant under
+  any task-source / messenger / agent swap.
 - The stdout protocol (007 super-set) is agent-agnostic; only grows, never
   shrinks.
 - The daemon never holds GitHub-API credentials (D5 / D7); the agent-side
-  creates the PR and the daemon simply relays the URL.
+  creates the PR and the daemon simply relays the URL. The same
+  delegate-down posture applies to task-source credentials — the daemon
+  never holds Jira / GitHub Issue tokens.
 
 ---
 
@@ -312,3 +339,4 @@ delegated Telegram-channel mapping to the presentation layer.
 | 0.1 | 2026-05-01 | Samuel | Initial draft |
 | 0.2 | 2026-05-02 | Samuel | Five-layer doc split: architecture moved to `ARCHITECTURE.md`, decision log to `ARD.md`. Functional-requirement detail / SQLite schema / HTTP-API specs delegated to spec / code; PRD slimmed to product-layer trunk. |
 | 0.3 | 2026-05-03 | Samuel | §6 "Extensibility direction" added — messenger / agent swap cost asymmetry and adoption triggers spelled out. Adapter infrastructure deferred until a concrete second consumer appears. |
+| 0.4 | 2026-05-03 | Samuel | Task source generalised: §1 Direction, §3 persona, and §6 updated to treat the source-of-truth (Jira / GitHub Issue / Linear) as a per-install configurable axis alongside messenger / agent. GitHub Issue is the second concrete provider (008). New decision: ARD D24. |
