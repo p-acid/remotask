@@ -2,28 +2,49 @@
 SYNC IMPACT REPORT
 ==================
 Version change: 1.1.0 → 1.2.0
-Bump rationale: Principle V ("Spec-Driven Development") relaxed so that the
-  single-file spec form (`specs/NNN-<name>.md` derived from
-  `docs/templates/SPEC.md`) is also acceptable, in addition to the earlier
-  multi-file form. The constraint is on the *artefacts* (motivation + behaviour
-  + acceptance tests + tasks), not the file count. MINOR per the project's
-  amendment policy because no principle is removed and the change is purely
-  additive (the relaxation *expands* the set of valid spec shapes rather than
-  narrowing it).
+Bump rationale: Two additive relaxations land together. Both expand the
+  set of valid implementations rather than narrowing it, so MINOR is the
+  correct bump per the project's amendment policy.
 
-  This bump also accompanies two non-semantic refactors that landed in the
-  same change:
-  - File moved from `.specify/memory/constitution.md` to root `CONSTITUTION.md`
-    (rename detected by git).
-  - Body fully translated to English (was Korean prose around English headings).
+  (a) Principle V ("Spec-Driven Development") relaxed so that the
+      single-file spec form (`specs/NNN-<name>.md` derived from
+      `docs/templates/SPEC.md`) is also acceptable, in addition to the
+      earlier multi-file form. The constraint is on the *artefacts*
+      (motivation + behaviour + acceptance tests + tasks), not the file
+      count. The "30-min, ≤1 file trivial fix" exemption is unchanged.
+
+  (b) Principles I and III lifted from platform-specific to platform-neutral
+      wording. The substance is unchanged — remotask is a remote-execution
+      pipeline that never holds an internal workspace, and concurrent
+      sessions are isolated 1:1:1 in filesystem and git state. The current
+      tracker (Jira) and the current operator channel (Telegram) are
+      acknowledged as the present implementations but are no longer
+      embedded in the principle text. Future swaps (Linear, GitHub Issues,
+      Slack, web UI, …) become spec-level decisions, not constitutional
+      amendments. This intentionally prevents path-dependence on a specific
+      platform.
+
+  This bump also carries two non-semantic refactors:
+  - File moved from `.specify/memory/constitution.md` to root
+    `CONSTITUTION.md` (rename detected by git).
+  - Body fully translated to English (was Korean prose around English
+    headings).
 
 Modified principles:
+  - I. (renamed) "Jira as Single Source of Truth" → "External Source of
+    Truth". Substance preserved: no internal workspace; tracker is
+    external; SQLite holds execution metadata only. Generalised so the
+    specific tracker is named only as the *current* implementation.
+  - III. Strict Session Isolation: invariant retained but expressed as
+    "1 task = 1 git worktree = 1 git branch" (was "1 Jira issue = ..."),
+    and the presentation-layer carve-out renamed from "Telegram channel
+    mapping" to "Operator channel mapping" with broader examples (Slack
+    thread, web UI, …).
   - V. Spec-Driven Development: form requirement softened. Both the
     single-file spec at `specs/NNN-<name>.md` and the multi-file
-    spec/plan/research/contracts/quickstart/tasks layout are accepted. The
-    "30-min, ≤1 file trivial fix" exemption is unchanged. Spec-kit-specific
-    slash command names (`/speckit-*`) removed from the workflow text — the
-    project no longer ships those skills (see ARD D23).
+    spec/plan/research/contracts/quickstart/tasks layout are accepted.
+    Spec-kit-specific slash command names (`/speckit-*`) removed from the
+    workflow text — the project no longer ships those skills (see ARD D23).
 
 Added sections:
   - None.
@@ -43,24 +64,31 @@ Follow-up TODOs:
   - None.
 -->
 
-# Remotask Constitution
+# Constitution
 
 ## Core Principles
 
-### I. Jira as Single Source of Truth (NON-NEGOTIABLE)
+### I. External Source of Truth (NON-NEGOTIABLE)
 
-Jira is the single source of truth for every task and issue.
+The work definition lives in an external system, not in remotask.
 
 - We do not model an internal task / issue / workspace domain.
-- Work context (title, description, comments, status) is always fetched from
-  Jira and never permanently mirrored locally.
+- Work context (title, description, comments, status) is fetched from the
+  external tracker on demand and never permanently mirrored locally.
 - Our SQLite stores **execution metadata only** (sessions, projects, locks,
   events).
-- When Jira and our system disagree, Jira wins.
+- When the external tracker and our system disagree, the external tracker
+  wins.
+- The current external tracker is Jira; the principle does not bind us to
+  Jira specifically. Any tracker (Linear, GitHub Issues, an internal API,
+  …) is acceptable as long as this principle is preserved.
 
-**Rationale**: This is the very reason we did not build our own workspace.
-Dual-write and synchronisation cost is not affordable for a single-operator
-self-hosted tool.
+**Rationale**: This is what makes remotask a remote-execution pipeline
+rather than a workspace. Our role is to drive an AI session against work
+defined elsewhere, not to redefine the work itself. Keeping the tracker
+external also sidesteps the dual-write and synchronisation cost a
+single-operator self-hosted tool cannot afford. (This is the line that
+separates remotask from products like Multica.)
 
 ### II. Daemon-Centric Architecture
 
@@ -84,16 +112,16 @@ consistency and auditing possible.
 Session isolation enforces a **1:1:1 mapping** (presentation channel is a
 separate layer).
 
-- **1 Jira issue = 1 git worktree = 1 git branch.**
+- **1 task = 1 git worktree = 1 git branch.**
 - Concurrent sessions are fully isolated in filesystem and git context.
 - Operations that touch shared resources (lockfile, DB migrations, package
   installs) are serialised through advisory locks.
-- Re-triggering the same issue while a session is active is rejected, or
+- Re-triggering the same task while a session is active is rejected, or
   must be an explicit takeover.
-- **Telegram channel mapping** (1:1 DM thread, group forum topic, future
-  web UI, …) is a presentation-layer decision and is not part of the
-  constitutional isolation model. The chosen mapping must, however, be
-  declared in the feature spec and remain auditable.
+- **Operator channel mapping** (Telegram DM thread, Telegram forum topic,
+  Slack thread, web UI, …) is a presentation-layer decision and is not
+  part of the constitutional isolation model. The chosen mapping must,
+  however, be declared in the feature spec and remain auditable.
 
 **Rationale**: In an unattended-execution setting, context bleed and lost
 work erode trust immediately. The essence of isolation is filesystem and
