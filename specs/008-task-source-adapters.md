@@ -108,11 +108,22 @@ adapter too:
 4. `fetch_context(canonical_key: str) -> ContextPayload` — read-only
    issue context for the agent-side bootstrap. `ContextPayload` is a
    provider-agnostic 4-field `TypedDict`: `{title: str, body: str,
-   state: Literal["open", "closed"], labels: list[str]}`. Each adapter
-   collapses its provider-native fields into this minimum set; richer
-   fields (assignees, comments, custom Jira fields) are deliberately
-   excluded for the abstraction's MVP and added only when a concrete
-   second consumer needs them (CLAUDE.md §2 — Simplicity First).
+   state: Literal["open", "closed"], labels: list[str]}`. Each
+   adapter collapses its provider-native fields into this minimum set
+   under two explicit normalisation rules:
+   - **`body` is normalised to markdown.** GitHub: pass through (issue
+     body is native markdown). Jira: convert ADF / wiki markup to
+     markdown (e.g., via `atlassian-python-api`'s converter), or fall
+     back to the plain-text representation when conversion fails —
+     never return raw ADF JSON.
+   - **`state` collapses richer status sets to the binary pair.**
+     GitHub: `open` → `"open"`, `closed` → `"closed"`. Jira: `Done`
+     / `Resolved` / `Closed` (and any status whose category is
+     "Done") → `"closed"`; every other Jira status → `"open"`.
+   Richer fields (assignees, comments, custom Jira fields) are
+   deliberately excluded for the abstraction's MVP and added only
+   when a concrete second consumer needs them (CLAUDE.md §2 —
+   Simplicity First).
 5. `format_issue_url(canonical_key: str) -> str` — source-issue back-link
    target used by the topic chokepoint.
 
@@ -363,19 +374,24 @@ Default ordering for behavioural changes is test-first.
       **both** dispatcher call sites to read `ctx.adapter`:
       - `dispatcher.dispatch` plain-text path
         (`daemon/dispatcher.py:128` — current
-        `extract_first_issue_key(text)` call) — replace with
-        `ctx.adapter.matches(text)`.
+        `extract_first_issue_key(text)` call) — replace with the
+        chain: `ctx.adapter.matches(text)` →
+        `ctx.adapter.to_canonical(operator_input)`.
       - `dispatcher._handle_slash_run` slash path
         (`daemon/dispatcher.py:617` — current
         `extract_first_issue_key(first_token) + split_prefix(...) +
-        rt_projects.by_prefix(...)` flow) — replace with
-        `ctx.adapter.matches(first_token)` →
+        rt_projects.by_prefix(...)` flow) — replace with the full
+        chain: `ctx.adapter.matches(first_token)` →
+        `ctx.adapter.to_canonical(operator_input)` →
         `ctx.adapter.extract_project_identifier(canonical)` →
         `rt_projects.by_identifier(ctx.conn,
         source=cfg.agent.task_source, identifier=...)`. The plain-text
         path's existing `by_prefix(...)` lookup at
         `daemon/dispatcher.py:134` gets the same `by_identifier`
-        substitution.
+        substitution. The four Protocol calls form a fixed pipeline —
+        `matches` returns operator-input form, `to_canonical`
+        normalises, `extract_project_identifier` derives the project
+        key, `by_identifier` resolves the row.
 - [ ] T5 — Amend `src/remotask/migrations/V0001__init.sql` in place
       (no V0002): rename `projects.jira_key` → `projects.source_identifier`,
       add `projects.source` TEXT, switch the PK to composite `(source,
