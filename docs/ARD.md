@@ -307,6 +307,69 @@ plan's Constitution Check passes 7/7.
 
 ---
 
+## D23 — Process overhaul: single-file spec + append-only CHANGELOG
+
+**Decision**: Retire the spec-kit-driven 7-file spec pattern (`specs/<feature>/`
+with `spec.md` + `plan.md` + `research.md` + `contracts/` + `quickstart.md` +
+`tasks.md` + `checklists/`) in favour of a single-file spec at
+`specs/NNN-<name>.md`, derived from [`docs/templates/SPEC.md`](./templates/SPEC.md).
+Per-feature merge history moves to a single append-only `CHANGELOG.md` at
+the repo root, with one 5–15-line section per feature in chronological
+ascending order. The constitution is promoted from
+`.specify/memory/constitution.md` to root `CONSTITUTION.md`. The `.specify/`
+directory and the 14 `.claude/skills/speckit-*` packages are removed
+entirely. Documentation root layout unifies under: `CONSTITUTION.md`,
+`CLAUDE.md`, `CHANGELOG.md`, `README.md` at root; `PRD.md`,
+`ARCHITECTURE.md`, `ARD.md`, `templates/SPEC.md` under `docs/`.
+
+`CLAUDE.md` is rewritten as a Karpathy-style behavioural guide
+(`forrestchang/andrej-karpathy-skills` §1–§4 verbatim) plus a §5 of
+remotask-specific conventions. All durable docs converge on English.
+
+**Rationale**:
+- The 7-file pattern was heavy relative to the change size of recent
+  features (006 was the clearest case — a 4-line behavioural change
+  spawned a full folder). The durable value lived in the four top layers
+  (CONSTITUTION / PRD / ARCHITECTURE / ARD); per-feature folders carried
+  little long-term signal once a PR merged.
+- A single short section per feature in `CHANGELOG.md` is enough to record
+  motivation + key outcome + PR / ARD anchors. Anything deeper survives in
+  the relevant ARD entry or the code itself.
+- Removing spec-kit closes a maintenance surface (14 skill packages, the
+  `.specify/` toolchain) that was no longer pulling its weight for a
+  single-operator project.
+
+**Constitution impact**: Two additive relaxations land together as
+constitution v1.1.0 → v1.2.0 (MINOR — invariants are *expanded*, not
+removed):
+- **§V "Spec-Driven Development"**: form requirement softened. The
+  single-file spec form is now the default; the multi-file form remains
+  acceptable. The artefact constraint (motivation + behaviour + acceptance
+  tests + tasks) is unchanged. The "<30-min, ≤1 file trivial fix"
+  exemption is unchanged. `/speckit-*` slash command names removed from
+  the workflow text.
+- **§I "External Source of Truth"** (renamed from "Jira as Single Source
+  of Truth") and **§III "Strict Session Isolation"**: lifted from
+  platform-specific to platform-neutral wording. Jira is acknowledged as
+  the *current* tracker rather than embedded in the principle. `1 Jira
+  issue = ...` becomes `1 task = ...`. The §III presentation-layer
+  carve-out is renamed "Operator channel mapping" with broader examples
+  (Slack thread, web UI, …). Substance preserved: remotask remains a
+  remote-execution pipeline with no internal workspace, and concurrent
+  sessions remain 1:1:1 in filesystem and git state. Future tracker /
+  channel swaps become spec-level decisions instead of constitutional
+  amendments.
+
+No waiver required.
+
+**Spec ref**: [`CHANGELOG.md#v-process-overhaul`](../CHANGELOG.md#v-process-overhaul)
+
+**Supersedes**: D18 (spec-kit + `/speckit-*` flow). The underlying
+principle of D18 (spec-driven, traceable) is preserved in §V; only the
+form was relaxed.
+
+---
+
 ## How to add a new entry
 
 New ARD entry shape:
