@@ -66,7 +66,15 @@ def main() -> int:
             time.sleep(0.1)
     if mode == "step_then_pr":
         pr_url = os.environ.get("FAKE_AGENT_PR_URL", DEFAULT_PR_URL)
-        step_body = os.environ.get("FAKE_AGENT_STEP_BODY", "Bash: gh pr create --draft")
+        # Normalise the body so it always satisfies the daemon STEP regex
+        # (`^STEP (.{1,500})$`): collapse newlines, strip whitespace, cap at
+        # 500 chars, fall back to the default if empty after sanitisation.
+        raw_body = os.environ.get(
+            "FAKE_AGENT_STEP_BODY", "Bash: gh pr create --draft"
+        )
+        step_body = " ".join(raw_body.splitlines()).strip()[:500]
+        if not step_body:
+            step_body = "Bash: gh pr create --draft"
         sys.stdout.write(f"STEP {step_body}\n")
         sys.stdout.write('EVENT agent.tool_use {"tool":"Bash","iter":1}\n')
         sys.stdout.write(f"PR_URL={pr_url}\n")

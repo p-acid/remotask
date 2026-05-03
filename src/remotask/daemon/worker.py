@@ -28,7 +28,7 @@ import sqlite3
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import structlog
 
@@ -38,6 +38,29 @@ from remotask.daemon import audit, sessions, topic
 from remotask.telegram.client import TelegramClient
 
 _log = structlog.get_logger().bind(component="worker")
+
+# 007 security: the production worker is now the real claude-agent-sdk driver
+# running with ``permission_mode="bypassPermissions"`` and full Bash access. A
+# prompt-injection or repo-content attack inside the agent could otherwise
+# read the daemon's parent environment (``env``, ``printenv``,
+# ``/proc/self/environ``) and exfiltrate any inherited secret — the Telegram
+# bot token, GitHub PATs, etc. We therefore build the worker env from a small
+# allowlist of inert variables. Anything specific the agent or worker needs
+# (PYTHONPATH for tests, REMOTASK_* identifiers, agent OAuth path) MUST be
+# passed explicitly via ``WorkerSpec.extra_env``.
+_WORKER_ENV_ALLOWLIST: Final = (
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "TZ",
+    "TMPDIR",
+)
+
 _PR_URL_RE = re.compile(r"^PR_URL=(\S+)\s*$")
 # 003 demo worker stdout protocol — see specs/003-e2e-demo/contracts/worker-stdout-protocol.md.
 _PROGRESS_RE = re.compile(r"^PROGRESS (\d+)/(\d+) (\S+)\s*$")
@@ -352,7 +375,15 @@ async def run_worker(
 
     log_path = _session_log_path(spec.session_id)
     argv = spec.argv if spec.argv is not None else _default_worker_argv()
-    env = os.environ.copy()
+    # Build the worker subprocess env from an inert allowlist (007 security).
+    # See _WORKER_ENV_ALLOWLIST and its module-level rationale: anything
+    # secret-bearing (bot tokens, API keys, PATs) MUST stay in the daemon
+    # process. WorkerSpec.extra_env is the explicit, opt-in way to pass
+    # things into the worker (PYTHONPATH, REMOTASK_* identifiers, agent
+    # OAuth credentials path the user has already pre-set, etc.).
+    env = {
+        k: os.environ[k] for k in _WORKER_ENV_ALLOWLIST if k in os.environ
+    }
     env.update(spec.extra_env)
     env.setdefault("REMOTASK_SESSION_ID", spec.session_id)
     env.setdefault("REMOTASK_ISSUE_KEY", spec.issue_key)

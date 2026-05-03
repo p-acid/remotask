@@ -28,7 +28,6 @@ banned commands cannot run (R2).
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import os
 import re
@@ -276,14 +275,26 @@ class SdkDriver:
         finally:
             if self.state.interrupt_requested.is_set():
                 # Let the watchdog finish emitting EVENT agent.interrupt + FINAL.
-                with contextlib.suppress(
-                    TimeoutError, asyncio.CancelledError, Exception
-                ):
+                # Suppress only the expected race conditions during shutdown;
+                # log anything else so SDK regressions stay visible.
+                try:
                     await asyncio.wait_for(watchdog, timeout=10.0)
+                except (TimeoutError, asyncio.CancelledError):
+                    pass
+                except Exception as e:  # pragma: no cover — defensive log only
+                    sys.stderr.write(
+                        f"sdk_worker: watchdog cleanup error: {e!r}\n"
+                    )
             else:
                 watchdog.cancel()
-                with contextlib.suppress(asyncio.CancelledError, Exception):
+                try:
                     await watchdog
+                except asyncio.CancelledError:
+                    pass
+                except Exception as e:  # pragma: no cover — defensive log only
+                    sys.stderr.write(
+                        f"sdk_worker: watchdog teardown error: {e!r}\n"
+                    )
         return 0
 
     def _handle_message(self, msg: Any) -> None:
@@ -309,10 +320,16 @@ class SdkDriver:
         # Even if the SDK can't interrupt cleanly we still emit FINAL so the
         # daemon transitions us to canceled rather than guessing from the
         # in-flight flag (which it will fall back to anyway).
-        with contextlib.suppress(TimeoutError, Exception):
+        try:
             await asyncio.wait_for(
                 self.client.interrupt(), timeout=_INTERRUPT_DRAIN_TIMEOUT
             )
+        except TimeoutError:
+            sys.stderr.write(
+                "sdk_worker: client.interrupt() timed out — emitting FINAL anyway\n"
+            )
+        except Exception as e:  # pragma: no cover — defensive log only
+            sys.stderr.write(f"sdk_worker: client.interrupt() failed: {e!r}\n")
         _emit(self.state, f"FINAL {self.state.iter} operator_stop")
 
 
@@ -361,8 +378,13 @@ def install_sigusr1_handler(state: DriverState) -> None:
 
     Per Python signal-safety: the handler does no I/O and only schedules a
     set on the asyncio Event from the running loop's thread.
+
+    Must be called from inside the running event loop — Python ≥3.10 made
+    ``asyncio.get_event_loop()`` deprecated outside one. The driver's
+    ``main()`` invokes us under ``asyncio.run`` so ``get_running_loop`` is
+    the canonical accessor.
     """
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _handler(_signum: int, _frame: object) -> None:
         # Schedule from the signal context — Event.set is thread-safe enough

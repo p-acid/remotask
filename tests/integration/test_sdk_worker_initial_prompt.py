@@ -39,12 +39,20 @@ class MockClient:
         self.queries.append(prompt)
 
     async def receive_messages(self):
+        # Block on _closed until the inbox has work to do or the producer
+        # signals shutdown. Avoids busy-spinning the event loop in tests
+        # that just want to drive the driver to completion.
         while True:
             while self._inbox:
                 yield self._inbox.popleft()
             if self._closed.is_set() and not self._inbox:
                 return
-            await asyncio.sleep(0)
+            try:
+                await asyncio.wait_for(self._closed.wait(), timeout=0.05)
+            except TimeoutError:
+                # Periodic wake-up so newly-fed items in the same loop
+                # iteration are picked up promptly without a hard busy-spin.
+                continue
 
     async def interrupt(self) -> None:
         self.interrupt_calls += 1
