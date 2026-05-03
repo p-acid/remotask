@@ -16,7 +16,6 @@ reviews:
     - "!CLAUDE.md"
     - "!CONSTITUTION.md"
     - "!CHANGELOG.md"
-    - "!OVERHAUL.md"
     - "!README.md"
     - "!docs/**"
 chat:
