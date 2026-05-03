@@ -32,6 +32,9 @@ EV_TELEGRAM_TOPIC_CREATE_FAILED: Final = "telegram_topic_create_failed"
 EV_TELEGRAM_ALREADY_IN_FLIGHT: Final = "telegram_already_in_flight"
 EV_TELEGRAM_TERMINATION_RECEIVED: Final = "telegram_termination_received"
 EV_SLASH_COMMAND_RECEIVED: Final = "slash_command_received"
+# 008/T8 — emitted from dispatcher._accept_trigger after the session row
+# is inserted. Payload: {adapter, source_identifier, canonical_key}.
+EV_TASK_SOURCE_RESOLVED: Final = "task_source_resolved"
 
 # 007: per-turn agent events emitted by the SDK driver via stdout EVENT lines.
 # Daemon-side ``worker.py`` parses ``EVENT <type> <json>`` and dispatches the

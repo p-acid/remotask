@@ -72,7 +72,7 @@ def _build_cfg(
     cfg.telegram.group_chat_id = fake_tg.chat_id
     cfg.telegram.allowed_user_ids = [99001]
     cfg.agent.worktree_root = str(worktree_root)
-    cfg.agent.default_project_jira_key = default_project
+    cfg.agent.default_project = default_project
     return cfg
 
 
@@ -97,7 +97,7 @@ async def test_slash_run_with_jira_key_drives_pr_created(
     fake_tg: FakeTelegram,
     repo: Path,
 ) -> None:
-    rt_projects.add(conn, "ZXTL", str(repo), base_branch="main")
+    rt_projects.add(conn, source="jira", identifier="ZXTL", repo_path=str(repo), base_branch="main")
     cfg = _build_cfg(fake_tg, worktree_root=tmp_path / "wt")
     client = TelegramClient(fake_tg.bot_token, transport=fake_tg.transport())
 
@@ -169,7 +169,7 @@ async def test_slash_run_free_text_uses_default_project(
     repo: Path,
 ) -> None:
     """US4 — /run with non-Jira-key args falls back to default project."""
-    rt_projects.add(conn, "ZXTL", str(repo), base_branch="main")
+    rt_projects.add(conn, source="jira", identifier="ZXTL", repo_path=str(repo), base_branch="main")
     cfg = _build_cfg(fake_tg, worktree_root=tmp_path / "wt", default_project="ZXTL")
     client = TelegramClient(fake_tg.bot_token, transport=fake_tg.transport())
 
@@ -237,7 +237,7 @@ async def test_slash_run_free_text_without_default_project_replies_hint(
     fake_tg: FakeTelegram,
     repo: Path,
 ) -> None:
-    rt_projects.add(conn, "ZXTL", str(repo), base_branch="main")
+    rt_projects.add(conn, source="jira", identifier="ZXTL", repo_path=str(repo), base_branch="main")
     cfg = _build_cfg(fake_tg, worktree_root=tmp_path / "wt", default_project="")
     client = TelegramClient(fake_tg.bot_token, transport=fake_tg.transport())
 

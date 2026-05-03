@@ -34,18 +34,34 @@ def insert_enqueued_session(
     issue_key: str,
     trigger_user: int,
     trigger_text: str,
+    source: str = "jira",
+    project_identifier: str | None = None,
 ) -> None:
     """Insert a fresh ``sessions`` row in ``enqueued`` state.
 
     Caller is expected to be inside an explicit transaction (``BEGIN IMMEDIATE``)
     so the same-issue concurrency check + insert + lock acquisition happen
     atomically. We only execute the INSERT here — the caller commits.
+
+    ``source`` and ``project_identifier`` (008/T5) record which provider
+    and which project produced the session. Default ``source = "jira"``
+    keeps existing test paths working until T4 wires the dispatcher's
+    adapter-driven source resolution.
     """
     conn.execute(
         "INSERT INTO sessions("
-        "id, issue_key, status, trigger_user, trigger_text, enqueued_at"
-        ") VALUES (?, ?, 'enqueued', ?, ?, ?)",
-        (session_id, issue_key, trigger_user, trigger_text, int(time.time())),
+        "id, issue_key, source, project_identifier, status, trigger_user, "
+        "trigger_text, enqueued_at"
+        ") VALUES (?, ?, ?, ?, 'enqueued', ?, ?, ?)",
+        (
+            session_id,
+            issue_key,
+            source,
+            project_identifier,
+            trigger_user,
+            trigger_text,
+            int(time.time()),
+        ),
     )
 
 

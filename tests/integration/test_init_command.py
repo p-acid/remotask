@@ -81,9 +81,10 @@ def test_init_force_overwrites_config_preserves_db(
     try:
         now = int(time.time())
         conn.execute(
-            "INSERT INTO projects(jira_key, repo_path, base_branch, enabled, added_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            ("ZXTL", "/tmp/repo", "main", 1, now, now),
+            "INSERT INTO projects(source, source_identifier, repo_path, "
+            "base_branch, enabled, added_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("jira", "ZXTL", "/tmp/repo", "main", 1, now, now),
         )
         conn.commit()
     finally:
@@ -98,7 +99,7 @@ def test_init_force_overwrites_config_preserves_db(
     # DB user row preserved.
     conn = sqlite3.connect(db_path)
     try:
-        rows = conn.execute("SELECT jira_key FROM projects").fetchall()
+        rows = conn.execute("SELECT source_identifier FROM projects").fetchall()
     finally:
         conn.close()
     assert ("ZXTL",) in rows

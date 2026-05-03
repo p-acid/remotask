@@ -70,7 +70,7 @@ async def test_full_happy_path_drives_pr_created(
     fake_tg: FakeTelegram,
     repo: Path,
 ) -> None:
-    rt_projects.add(conn, "ZXTL", str(repo), base_branch="main")
+    rt_projects.add(conn, source="jira", identifier="ZXTL", repo_path=str(repo), base_branch="main")
 
     cfg = rt_config.default_schema()
     cfg.telegram.bot_token = fake_tg.bot_token

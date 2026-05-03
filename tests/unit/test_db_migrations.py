@@ -53,20 +53,34 @@ def test_session_valid_status_inserts(tmp_path: Path) -> None:
     assert n == 1
 
 
-def test_projects_jira_key_unique(tmp_path: Path) -> None:
+def test_projects_composite_pk_unique(tmp_path: Path) -> None:
+    """008/T5: composite ``(source, source_identifier)`` PK.
+
+    Same identifier under the same source rejects; same identifier under
+    a different source is permitted.
+    """
     conn = db.connect(tmp_path / "state.db")
     now = int(time.time())
     conn.execute(
-        "INSERT INTO projects(jira_key, repo_path, base_branch, enabled, added_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        ("ZXTL", "/tmp/repo", "main", 1, now, now),
+        "INSERT INTO projects(source, source_identifier, repo_path, "
+        "base_branch, enabled, added_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("jira", "ZXTL", "/tmp/repo", "main", 1, now, now),
     )
     with pytest.raises(sqlite3.IntegrityError):
         conn.execute(
-            "INSERT INTO projects(jira_key, repo_path, base_branch, enabled, added_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            ("ZXTL", "/tmp/repo2", "main", 1, now, now),
+            "INSERT INTO projects(source, source_identifier, repo_path, "
+            "base_branch, enabled, added_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("jira", "ZXTL", "/tmp/repo2", "main", 1, now, now),
         )
+    # Different source — must be accepted.
+    conn.execute(
+        "INSERT INTO projects(source, source_identifier, repo_path, "
+        "base_branch, enabled, added_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ("github_issue", "ZXTL", "/tmp/repo3", "main", 1, now, now),
+    )
 
 
 def test_session_events_cascade_delete(tmp_path: Path) -> None:

@@ -96,7 +96,7 @@ async def test_progress_and_final_carry_key_prefix(
     fake_tg: FakeTelegram,
     repo: Path,
 ) -> None:
-    rt_projects.add(conn, "ZXTL", str(repo), base_branch="main")
+    rt_projects.add(conn, source="jira", identifier="ZXTL", repo_path=str(repo), base_branch="main")
     cfg = _build_cfg(fake_tg, worktree_root=tmp_path / "wt")
     client = TelegramClient(fake_tg.bot_token, transport=fake_tg.transport())
 

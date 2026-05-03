@@ -29,7 +29,7 @@ def repo_path(tmp_path: Path) -> Path:
 @pytest.fixture
 def conn(tmp_path: Path, repo_path: Path) -> sqlite3.Connection:
     conn = core_db.connect(tmp_path / "state.db")
-    rt_projects.add(conn, "ZXTL", str(repo_path), base_branch="main")
+    rt_projects.add(conn, source="jira", identifier="ZXTL", repo_path=str(repo_path), base_branch="main")
     return conn
 
 

@@ -86,6 +86,7 @@ the MVP scope table.
 | **Worker** | `src/remotask/daemon/worker.py` | Creates the git worktree, spawns the agent subprocess, parses PROGRESS / FINAL / STEP / EVENT stdout, runs the SIGUSR1 grace ladder, applies the terminal transition. |
 | **SDK driver** | `src/remotask/agent/sdk_worker.py` | Wraps the claude-agent-sdk call (007). Sends the initial `/work-start <key>` prompt, translates PostToolUse / Stop hooks into STEP / EVENT lines, enforces the §VI deny-list at a `PreToolUse` hook, and turns SIGUSR1 into a cooperative `client.interrupt()`. |
 | **Topic formatter** | `src/remotask/daemon/topic.py` | Single chokepoint `format_progress(issue_key, body)` that adds the `[<issue_key>]` prefix to every session-bound outbound message + canonical templates. |
+| **Task source adapters** | `src/remotask/task_sources/` | `TaskSourceAdapter` Protocol (5 methods: `matches` / `to_canonical` / `extract_project_identifier` / `fetch_context` / `format_issue_url`) + `JiraAdapter` + `GitHubIssueAdapter` + `get_active_adapter(cfg, conn)` factory. The dispatcher reads `ctx.adapter` for both call sites; daemon never holds task-source credentials (D24). |
 | **Telegram client / parser / commands** | `src/remotask/telegram/` | Bot API calls, message parsing (`extract_first_issue_key`, `match_slash_command`), the curated `setMyCommands` set. |
 | **Audit** | `src/remotask/daemon/audit.py` | Session-bound events go to the `session_events` table; unbound events (rejection, auth failure) go to `audit.log`. |
 | **Runtime** | `src/remotask/daemon/runtime.py` | Listener thread, asyncio loop, signal handlers, in-memory state (`operator_stop_in_flight` set, `worker_pid_by_session` map). |
@@ -182,7 +183,12 @@ All transitions go through `sessions.transition(...)` and are recorded as
   credential, no separate API key). From 007 onward the production path
   drives the SDK directly via `remotask.agent.sdk_worker`; the 003
   `demo_worker` lives on as a placeholder for legacy regression tests.
-- **Data**: SQLite (V0001 schema), WAL mode
+- **Data**: SQLite (V0001 schema, amended in place by 008 — `projects`
+  keyed on composite `(source, source_identifier)`, `sessions` carries
+  `source` + `project_identifier` columns), WAL mode
+- **Task source**: pluggable per install via `agent.task_source` config
+  field (`"jira"` or `"github_issue"`); Jira mode requires `[jira] host
+  = "..."` for URL formatting (D24)
 - **Logging**: structlog (JSON lines)
 - **Daemon management**: launchd (macOS)
 - **Tests**: pytest, pytest-asyncio, pytest-cov
@@ -205,6 +211,7 @@ core outcome + PR / ARD references) lives in
 | `005-dm-channel` | `/cancel` canonical, `[<issue_key>]` prefix chokepoint, alias deprecation |
 | `006-remove-termination-aliases` | Deprecation aliases removed |
 | `007-agent-sdk-integration` | Placeholder `demo_worker` → real claude-agent-sdk driver, STEP / EVENT protocol, deny-list hook, agent-side Draft-PR creation |
+| `008-task-source-adapters` | `TaskSourceAdapter` Protocol + `JiraAdapter` retrofit + `GitHubIssueAdapter` (D24). V0001 amended in place — `projects (source, source_identifier)` composite PK + `sessions.source` / `sessions.project_identifier` columns. `EV_TASK_SOURCE_RESOLVED` audit event |
 
 ## 9. Where each thing lives
 
