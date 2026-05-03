@@ -314,8 +314,14 @@ Default ordering for behavioural changes is test-first.
       `tests/task_sources/test_protocol_consistency.py` (parametrised over
       both adapters for AT11), `tests/daemon/test_dispatcher_with_adapter.py`,
       `tests/daemon/test_sessions_provider_columns.py` (AT8 / AT10),
-      `tests/daemon/test_cancel_provider_agnostic.py` (AT9)). Run the
-      suite: confirm each new test fails for the expected reason (red).
+      `tests/daemon/test_cancel_provider_agnostic.py` (AT9)). Add a
+      `FakeTaskSourceAdapter` (in `tests/task_sources/fakes.py`) that
+      records `os.getpid()` on every `fetch_context` call and exposes a
+      `last_fetch_pid` attribute — used by AT7 to assert the credential
+      read happens in the worker subprocess, not the daemon. The
+      `subprocess.run(["gh", "issue", "view", ...])` mock fixture lives
+      in `tests/conftest.py`. Run the suite: confirm each new test
+      fails for the expected reason (red).
 - [ ] T2 — Define `TaskSourceAdapter` Protocol in
       `src/remotask/task_sources/__init__.py` with the **five** Protocol
       methods (`matches` / `to_canonical` /
@@ -415,8 +421,9 @@ Default ordering for behavioural changes is test-first.
       canonical key alone (no provider name, no `agent.task_source` value,
       no operator-script identifier baked in). Wire
       `EV_TASK_SOURCE_RESOLVED` emission inside the dispatcher's
-      `_accept_trigger` (single chokepoint — covers both plain-text and
-      slash paths). Confirm AT9 / AT10 green. The operator-side bootstrap
+      `_accept_trigger` (`daemon/dispatcher.py:363` — single chokepoint
+      that covers both plain-text and slash paths). Confirm AT9 / AT10
+      green. The operator-side bootstrap
       automation itself is out of scope per *Out-of-scope*.
 - [ ] T9 — Update `docs/ARCHITECTURE.md`: §2 component table gains a
       `TaskSourceAdapter` row pointing at `src/remotask/task_sources/`;
@@ -467,10 +474,12 @@ All seven principles evaluated. No waiver required.
   Jira specifically", `CONSTITUTION.md` L82–84) — no amendment needed.
 - **II. Daemon-Centric Architecture** — PASS. The adapter modules live under
   `src/remotask/task_sources/`. The daemon-side change is thin: the
-  dispatcher's two call sites delegate to `adapter.matches` and
-  `adapter.extract_project_identifier`, and the topic chokepoint switches
-  URL formatter to `adapter.format_issue_url`. Business logic still flows
-  through the same daemon process; clients still command-and-display.
+  dispatcher's two call sites delegate to `adapter.matches` /
+  `adapter.to_canonical` / `adapter.extract_project_identifier`; the
+  topic chokepoint switches URL formatter to `adapter.format_issue_url`;
+  the agent-side bootstrap consults `adapter.fetch_context` (out of
+  daemon process). Business logic still flows through the same daemon
+  process; clients still command-and-display.
 - **III. Strict Session Isolation** — PASS. The §III invariant (`1 task =
   1 git worktree = 1 git branch`, `CONSTITUTION.md` L115) is preserved by
   D24's "task identity remains a single string per session, regardless of
@@ -557,7 +566,9 @@ All seven principles evaluated. No waiver required.
   (`uv tool install -e .`); (5) edit `~/.config/remotask/config.toml` —
   add `agent.task_source = "jira" | "github_issue"` (required, no
   default) plus the matching `[jira] host = "..."` block when `jira` is
-  the active source; (6) restart daemon. Adjacent items that don't gate
+  the active source; **also rename
+  `agent.default_project_jira_key` → `agent.default_project`** if that
+  field was set (B11 — provider-neutral rename); (6) restart daemon. Adjacent items that don't gate
   merge but may surface during smoke: `gh auth status` scope (full-OAuth
   login covers `issue:read` automatically; fine-grained PATs may need it
   added), the operator's own `/work-start` skill needs internal logic that
