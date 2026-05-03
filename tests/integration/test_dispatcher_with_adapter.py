@@ -95,6 +95,24 @@ class TestDispatcherJiraMode:
         ).fetchall()
         assert rows == [("ZXTL-1234", "jira", "ZXTL")]
 
+        # AT10 (T-A3 strengthening) — EV_TASK_SOURCE_RESOLVED is emitted
+        # from the dispatcher's _accept_trigger chokepoint, not just by
+        # direct audit.record_event calls in unit tests. This guards
+        # against silent removal of the emission line.
+        import json as _json
+
+        from remotask.daemon import audit as rt_audit
+
+        ev_rows = conn.execute(
+            "SELECT payload FROM session_events WHERE type = ?",
+            (rt_audit.EV_TASK_SOURCE_RESOLVED,),
+        ).fetchall()
+        assert len(ev_rows) == 1, "EV_TASK_SOURCE_RESOLVED missing from accept path"
+        payload = _json.loads(ev_rows[0][0])
+        assert payload["adapter"] == "jira"
+        assert payload["source_identifier"] == "ZXTL"
+        assert payload["canonical_key"] == "ZXTL-1234"
+
 
 class TestDispatcherJiraRejectsForeignKey:
     """AT2 — when active adapter is Jira, ``owner/repo#42`` is not accepted."""
