@@ -1,24 +1,29 @@
 # remotask
 
-Remote agent trigger for Claude Code via Telegram. 휴대폰에서 `/run ZXTL-1234`
-한 줄로 로컬 PC의 Claude Code 세션을 시작해 Jira 이슈를 처리하고 Draft PR까지
-자동으로 만든다.
+Remote agent trigger for Claude Code via Telegram. From your phone, one
+`/run ZXTL-1234` line launches a Claude Code session on your local PC,
+which works the Jira issue and opens a Draft PR on its own.
 
 ## What it does
 
-- Telegram에서 `/run <Jira-key>` (또는 평문 `ZXTL-1234`)로 세션 트리거.
-- 화이트리스트 사용자만 트리거 가능, forum topic 단위로 세션 격리.
-- daemon이 `git worktree` + Claude Agent SDK로 작업을 수행.
-- 진행 상황은 같은 토픽에 `[ZXTL-1234] Status: …` 형식으로 실시간 보고.
-- 첫 commit이 생기면 GitHub Draft PR을 자동 생성, 토픽에 링크 회신.
-- 잘못 가고 있으면 같은 토픽에서 `/cancel` 한 번으로 graceful 종료
-  (응답 없으면 grace 후 force-kill).
-- 머지는 사람이 GitHub 모바일 앱에서 직접 수행.
+- Trigger a session from Telegram via `/run <Jira-key>` (or a plain-text
+  message containing `ZXTL-1234`).
+- Only whitelisted users can trigger; sessions are isolated per forum topic.
+- The daemon performs the work via `git worktree` + the Claude Agent SDK.
+- Progress is reported back to the same topic in real time as
+  `[ZXTL-1234] Status: …` lines.
+- The first commit triggers an automatic GitHub Draft PR; the URL is
+  posted back to the topic.
+- If the agent goes off track, a single `/cancel` in the same topic ends
+  the session gracefully (force-kill after a grace window if it doesn't
+  respond).
+- Merging is performed by a human, in the GitHub mobile app.
 
 ## Status
 
-Phase 1 (MVP) 완료. Phase 2(웹 GUI)는 예정. 자세한 범위는 [`PRD.md`](./PRD.md) §2,
-현재까지 머지된 feature stack은 [`ARCHITECTURE.md`](./ARCHITECTURE.md) §8 참조.
+Phase 1 (MVP) complete. Phase 2 (web GUI) is planned. Detailed scope lives
+in [`docs/PRD.md`](./docs/PRD.md) §2; the merged feature stack so far is
+in [`CHANGELOG.md`](./CHANGELOG.md) and [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) §8.
 
 ## Install
 
@@ -32,65 +37,67 @@ uv tool install .
 remotask init                                  # config + DB + token bootstrap
 remotask config set agent.max_concurrent 1
 remotask projects add ZXTL ~/Developments/zextool
-remotask install                               # macOS launchd agent 등록
+remotask install                               # register the macOS launchd agent
 remotask daemon status                         # ✓ running
 ```
 
-Telegram 측 셋업(봇 생성, supergroup forum 활성화, 화이트리스트 추가)은
-`remotask init` 마법사 안내에 따라 진행한다. 채널 이용 흐름은 각 feature의
-quickstart 문서가 가장 정확하다 — 가장 최근 것은
-[`specs/006-remove-termination-aliases/quickstart.md`](./specs/006-remove-termination-aliases/quickstart.md).
+The Telegram-side setup (creating the bot, enabling supergroup forum mode,
+adding the whitelist) is walked through by the `remotask init` wizard. The
+latest workflow changes are tracked in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ## CLI
 
 ```
-remotask init                  # 인터랙티브 설정 마법사
-remotask install / uninstall   # launchd plist 등록/해제
+remotask init                  # interactive setup wizard
+remotask install / uninstall   # register / unregister the launchd plist
 remotask daemon start | stop | status | logs -f
-remotask daemon run-foreground # launchd가 호출하는 진입점
+remotask daemon run-foreground # the entry point launchd invokes
 remotask config get | set <key> [value]
-remotask login                 # Telegram 토큰·그룹 등록
+remotask login                 # register Telegram token + group
 remotask sessions list | cancel <issue-key>
 remotask projects list | add <jira-key> <repo-path> | remove <jira-key>
 ```
 
-## Telegram surface (운영자 명령)
+## Telegram surface (operator commands)
 
-큐레이션된 슬래시 셋 (BotFather UI 자동완성):
+A curated slash set (auto-completed by the BotFather UI):
 
-| 명령 | 설명 |
-|------|------|
-| `/run <Jira-key | free-text>` | 세션 시작 |
-| `/cancel` | 활성 세션 종료 (토픽 안에서) |
-| `/status` | 활성 세션 목록 (메인 챗) / 토픽 상세 (토픽 안) |
+| Command | Description |
+|---------|-------------|
+| `/run <Jira-key | free-text>` | Start a session |
+| `/cancel` | End the active session (must be sent inside the topic) |
+| `/status` | Active-session list (in main chat) / topic detail (inside a topic) |
 
-평문 메시지 중에서 인식되는 형식: `[A-Z][A-Z0-9_]{1,9}-\d{1,6}` 패턴이 있는 메시지를
-세션 트리거로 받는다 (예: `please look at ZXTL-1234`). 그 외 평문은 일반 채팅으로
-무시된다.
+Plain-text messages are also accepted as session triggers when they contain
+the `[A-Z][A-Z0-9_]{1,9}-\d{1,6}` pattern (e.g. `please look at ZXTL-1234`).
+Anything else in plain text is treated as ordinary chat and ignored.
 
 ## Development
 
 ```bash
 uv sync
-uv run pytest                          # 전체 테스트 (~60s)
+uv run pytest                          # full suite (~60s)
 uv run ruff check src/ tests/
 uv run mypy src/remotask/core/
 ```
 
-테스트는 `tests/unit/`, `tests/integration/` 아래에 있다. 옵트인 `local_only`
-마커는 실제 launchctl 상태를 변경하는 테스트 전용이다 — `pytest -m local_only`로
-실행.
+Tests live under `tests/unit/` and `tests/integration/`. The opt-in
+`local_only` marker is reserved for tests that mutate real launchctl state
+— run them with `pytest -m local_only`.
 
 ## Documentation map
 
-| 문서 | 답하는 질문 |
-|------|-------------|
-| [`.specify/memory/constitution.md`](./.specify/memory/constitution.md) | 절대 어기지 않는 원칙 |
-| [`PRD.md`](./PRD.md) | 누가, 왜, 무엇을/안 만드는가 (제품 layer) |
-| [`ARCHITECTURE.md`](./ARCHITECTURE.md) | 무엇이 어떻게 생겼는가 (현재 시스템 정의) |
-| [`ARD.md`](./ARD.md) | 왜 이 시스템 구조를 골랐는가 (결정 이력) |
-| [`specs/<feature>/`](./specs) | 구체 변경의 명세 / 회귀 테스트 의도 |
-| [`CLAUDE.md`](./CLAUDE.md) | AI agent 런타임 인덱스 (현재 active plan 포인터) |
+| Document | Question it answers |
+|----------|---------------------|
+| [`CONSTITUTION.md`](./CONSTITUTION.md) | Rules we never break |
+| [`docs/PRD.md`](./docs/PRD.md) | Who, why, what's in scope / out of scope (product layer) |
+| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | What the system looks like right now |
+| [`docs/ARD.md`](./docs/ARD.md) | Why we picked this shape (decision history) |
+| [`CHANGELOG.md`](./CHANGELOG.md) | Per-feature merge history |
+| [`CLAUDE.md`](./CLAUDE.md) | AI-agent behaviour guide (Karpathy §1–§4 + §5 project conventions) |
+| [`docs/templates/SPEC.md`](./docs/templates/SPEC.md) | Single-file spec template (TDD-explicit) |
 
-새 feature는 `/speckit-specify` → `/speckit-plan` → `/speckit-tasks` →
-`/speckit-implement` 흐름을 따른다 (헌법 §V).
+New features are written by copying [`docs/templates/SPEC.md`](./docs/templates/SPEC.md)
+into a single file at `specs/NNN-<name>.md` — TDD-explicit. After merge,
+add a 5–15-line entry to `CHANGELOG.md`. (Constitution §V — see
+[`CONSTITUTION.md`](./CONSTITUTION.md).)

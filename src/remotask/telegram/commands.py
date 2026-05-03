@@ -5,7 +5,7 @@ Adding or removing a command is intentionally a code change: the registered
 menu can never drift from what the dispatcher actually handles, and tests pin
 the shape so accidental drift is caught at PR time.
 
-Per ``specs/005-dm-channel/data-model.md`` the curated set is now:
+Per ``CHANGELOG.md#v005`` the curated set is now:
 
 * ``/run``    — start a session
 * ``/cancel`` — cancel an active session (canonical operator-stop, 005)

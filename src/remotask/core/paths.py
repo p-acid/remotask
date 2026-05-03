@@ -3,7 +3,7 @@
 Honors ``XDG_*_HOME`` environment variables when set; otherwise falls back
 to the XDG defaults under ``$HOME``. This is enforced on every platform
 (macOS included) per PRD §6.3 and constitution decision D12 — see
-``specs/001-cli-bootstrap/research.md`` for rationale.
+``CHANGELOG.md#v001`` for the feature summary.
 """
 from __future__ import annotations
 

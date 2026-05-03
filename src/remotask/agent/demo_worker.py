@@ -2,7 +2,7 @@
 
 Spawned by the daemon as a child subprocess in the per-session git worktree.
 Writes the small line protocol from
-``specs/003-e2e-demo/contracts/worker-stdout-protocol.md`` to stdout:
+``CHANGELOG.md#v003`` (feature summary) to stdout:
 
 * ``PROGRESS i/N <iso8601>`` at the start of each iteration
 * ``FINAL <i> natural`` after all iterations complete

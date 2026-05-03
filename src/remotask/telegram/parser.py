@@ -1,7 +1,7 @@
 """Telegram message parsers — issue-key trigger and slash commands.
 
-The grammars are fixed by the contracts in ``specs/002-…/`` (issue-key) and
-``specs/004-…/`` (slash commands).
+Grammars: see ``CHANGELOG.md#v002`` (issue-key) and ``CHANGELOG.md#v004``
+(slash commands) for feature summaries.
 """
 from __future__ import annotations
 

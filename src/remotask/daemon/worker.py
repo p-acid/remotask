@@ -62,10 +62,10 @@ _WORKER_ENV_ALLOWLIST: Final = (
 )
 
 _PR_URL_RE = re.compile(r"^PR_URL=(\S+)\s*$")
-# 003 demo worker stdout protocol — see specs/003-e2e-demo/contracts/worker-stdout-protocol.md.
+# 003 demo worker stdout protocol — see CHANGELOG.md#v003 for the feature summary.
 _PROGRESS_RE = re.compile(r"^PROGRESS (\d+)/(\d+) (\S+)\s*$")
 _FINAL_RE = re.compile(r"^FINAL (\d+) (\S+)\s*$")
-# 007 SDK worker stdout protocol — see specs/007-agent-sdk-integration/contracts/sdk-worker-protocol.md.
+# 007 SDK worker stdout protocol — see CHANGELOG.md#v007 for the feature summary.
 # STEP carries one human-readable progress line (1..500 chars, no newline).
 # EVENT carries one structured per-turn audit row: ``EVENT <type> <single-line-json>``.
 _STEP_RE = re.compile(r"^STEP (.{1,500})$")

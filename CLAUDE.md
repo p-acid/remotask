@@ -1,43 +1,87 @@
-<!-- SPECKIT START -->
-This project is developed and maintained against a five-layer documentation
-stack. Treat each document as the **source of truth (SoT)** for its layer:
+# CLAUDE.md
+
+Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
+
+**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+
+## 1. Think Before Coding
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+## 2. Simplicity First
+
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+## 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+## 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+```
+
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+## 5. Project Conventions (remotask)
+
+This project keeps four durable documents at the root. Treat each as the **source of truth (SoT)** for its layer; in case of conflict, precedence runs left-to-right.
 
 | Layer | File | What it answers |
 |-------|------|-----------------|
-| 원칙 | [`.specify/memory/constitution.md`](./.specify/memory/constitution.md) | 절대 어기지 않는 원칙 (NON-NEGOTIABLE 7개) |
-| 제품 | [`PRD.md`](./PRD.md) | 누가, 왜, 무엇을 만드는가 / MVP 범위 / 시나리오 |
-| 시스템 정의 | [`ARCHITECTURE.md`](./ARCHITECTURE.md) | 현재 시점 시스템이 어떻게 생겼는가 |
-| 결정 이력 | [`ARD.md`](./ARD.md) | 왜 이 시스템 구조를 골랐는가 (D1, D2, …) |
-| 변경 명세 | [`specs/<feature>/`](./specs) | 각 변경의 spec / plan / contracts / tasks / quickstart |
+| Principles | [`CONSTITUTION.md`](./CONSTITUTION.md) | Non-negotiable rules |
+| Product | [`docs/PRD.md`](./docs/PRD.md) | Who, why, what is built / MVP scope / scenarios |
+| System definition | [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | How the system looks right now |
+| Decision history | [`docs/ARD.md`](./docs/ARD.md) | Why this shape was chosen (D1, D2, …) |
 
-Working rules for AI agents:
+Completed-work history lives in [`CHANGELOG.md`](./CHANGELOG.md) — one short section per feature with PR and ARD references. Append-only.
 
-1. **Constitution은 절대 우위.** 충돌 시 헌법 > PRD > ARCHITECTURE > ARD > spec >
-   일반 문서. 헌법 amend가 필요하면 `/speckit-constitution`으로 정식 절차.
-2. **모든 비-trivial 변경은 spec-driven** (헌법 §V). `/speckit-specify` → plan →
-   tasks → implement 흐름을 따른다. 30분 미만 1파일 이내 버그 픽스만 예외.
-3. **ARCHITECTURE.md와 ARD.md는 같은 PR에서 갱신한다.** 시스템 모습이 변하면
-   ARCHITECTURE.md가, 그 결정이 새로우면 ARD.md에 새 entry(DNN)가 추가되어야
-   한다. 옛 entry는 덮어쓰지 않고 새 entry로 갱신/대체한다.
-4. **PRD는 제품 layer**다. 디테일(스키마·API 시그니처·디렉토리 트리 등)은 PRD가
-   아니라 ARCHITECTURE.md / spec / 코드 자체에서 찾는다. PRD에 디테일을 다시 박지
-   않는다.
-5. **Active feature plan 포인터**(아래)는 `/speckit-plan`이 갱신한다. 다른 곳에서
-   임의로 바꾸지 않는다.
+### Working rules
 
-Active feature plan: [`specs/007-agent-sdk-integration/plan.md`](./specs/007-agent-sdk-integration/plan.md) — placeholder demo_worker → real claude-agent-sdk driver, `/work-start`+`/work-done` flow, bypassPermissions + driver-level deny-list
+1. **Constitution wins.** Conflict order: `CONSTITUTION.md` > `docs/PRD.md` > `docs/ARCHITECTURE.md` > `docs/ARD.md` > everything else. Constitutional amendments go in their own PR.
+2. **Spec-driven, but lightweight.** Non-trivial changes live in a single file at `specs/NNN-<name>.md`, derived from [`docs/templates/SPEC.md`](./docs/templates/SPEC.md) (motivation + behavior + acceptance tests + tasks inline). No folders, no plan/research/contracts/quickstart split. Bug fixes under 30 minutes touching ≤1 file are exempt.
+3. **`docs/ARCHITECTURE.md` and `docs/ARD.md` move together.** When system shape changes, `docs/ARCHITECTURE.md` is updated; when the decision is new, `docs/ARD.md` gets a new entry (`DNN`). Old entries are not overwritten — supersession is recorded as a new entry.
+4. **`docs/PRD.md` is the product layer.** Implementation detail (schemas, API signatures, directory trees, …) lives in `docs/ARCHITECTURE.md`, the spec, or the code itself — not in `docs/PRD.md`.
+5. **Add a `CHANGELOG.md` section on feature merge.** PR link + key change summary + related ARD entry numbers. 5–15 lines.
+6. **Spec files are disposable after merge.** Once merged, the spec file does not need to be retained — `CHANGELOG.md` is the durable record.
 
-Prior features (foundational; still authoritative):
-- `specs/006-remove-termination-aliases/plan.md` — deprecation 별칭 4개 완전 제거
-- `specs/005-dm-channel/plan.md` — `/cancel` 캐노니컬, `[KEY]` prefix chokepoint, 별칭 deprecation
-- `specs/004-slash-commands/plan.md` — setMyCommands, `/run` grammar, `/status`, slash-command dispatch
-- `specs/003-e2e-demo/plan.md` — placeholder worker, operator-stop loop, FINAL line 프로토콜
-- `specs/002-telegram-trigger/plan.md` — listener, dispatcher, topic, audit, worker scaffolding
-- `specs/001-cli-bootstrap/plan.md` — paths, schema V0001, daemon shell
+---
 
-Always-applies:
-- [`.specify/memory/constitution.md`](./.specify/memory/constitution.md) — project principles (v1.1.0; Principle III amended per ARD D19)
-- [`PRD.md`](./PRD.md) — product-level context
-- [`ARCHITECTURE.md`](./ARCHITECTURE.md) — current system definition
-- [`ARD.md`](./ARD.md) — architecture decision record
-<!-- SPECKIT END -->
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

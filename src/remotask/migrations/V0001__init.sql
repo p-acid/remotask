@@ -1,5 +1,5 @@
 -- V0001 — initial schema for remotask
--- See specs/001-cli-bootstrap/data-model.md for rationale.
+-- See CHANGELOG.md#v001 for the feature summary.
 
 CREATE TABLE projects (
   jira_key      TEXT PRIMARY KEY,
