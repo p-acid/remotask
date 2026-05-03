@@ -81,8 +81,13 @@ adapter too:
 
 1. `matches(text: str) -> str | None` — adapter-owned grammar; returns the
    *operator-input form* of an issue key found in `text` (Jira:
-   `ZXTL-1234`; GitHub: `owner/repo#42` or the active-project `#42`
-   shorthand) or `None`.
+   `ZXTL-1234`; GitHub: `owner/repo#42` or the `#42` shorthand) or
+   `None`. The `#N` shorthand resolves only when **exactly one**
+   `(source, *)` row exists in the `projects` table for the active
+   provider; with two or more registered repos the adapter returns
+   `None` and the dispatcher falls through to a "specify
+   `owner/repo#N`" reply (Telegram-side UX, not part of the adapter
+   contract).
 2. `to_canonical(operator_input: str) -> str` — fs/git-safe canonical key
    (Jira: identity; GitHub: `gh-<repo>-<n>`).
 3. `extract_project_identifier(canonical_key: str) -> str` — yields the
@@ -90,15 +95,28 @@ adapter too:
    the prefix (`ZXTL`); GitHub: `<owner>/<repo>` reconstructed from the
    canonical key + the active project mapping the adapter was built with.
 4. `fetch_context(canonical_key: str) -> ContextPayload` — read-only
-   issue context for the agent-side bootstrap.
+   issue context for the agent-side bootstrap. `ContextPayload` is a
+   provider-agnostic 4-field `TypedDict`: `{title: str, body: str,
+   state: Literal["open", "closed"], labels: list[str]}`. Each adapter
+   collapses its provider-native fields into this minimum set; richer
+   fields (assignees, comments, custom Jira fields) are deliberately
+   excluded for the abstraction's MVP and added only when a concrete
+   second consumer needs them (CLAUDE.md §2 — Simplicity First).
 5. `format_issue_url(canonical_key: str) -> str` — source-issue back-link
    target used by the topic chokepoint.
 
 The factory is `get_active_adapter(cfg, conn) -> TaskSourceAdapter` — it
 takes both the config *and* the SQLite connection, because the GitHub
 adapter's `#N` shorthand resolution must consult the active project
-mapping at construction time. `cfg` alone is insufficient. The factory
-caches a single instance per process and rebuilds when config changes.
+mapping at construction time. `cfg` alone is insufficient.
+
+The daemon builds the adapter **once** at startup and injects it into
+`DispatchContext.adapter` (alongside the existing `conn` / `client` /
+`cfg` / `spawn_worker_task` fields). Both dispatcher call sites
+(`dispatch` plain-text path, `_handle_slash_run` slash path) read the
+same `ctx.adapter`. Process-lifetime singleton; config changes require a
+daemon restart, which matches the current `cfg` reload posture (no hot
+reload).
 
 **Provider-specific config fields.** `agent.task_source` is the
 active-provider switch; each adapter may require its own nested config
@@ -279,31 +297,39 @@ Default ordering for behavioural changes is test-first.
       `src/remotask/task_sources/__init__.py` with the **five** Protocol
       methods (`matches` / `to_canonical` /
       `extract_project_identifier` / `fetch_context` /
-      `format_issue_url`) and the `ContextPayload` typed shape returned by
-      `fetch_context`. Add the `get_active_adapter(cfg, conn)` factory —
-      caches one instance per process, rebuilds when config changes. No
-      adapter implementation yet — just the interface.
-- [ ] T3 — Implement `JiraAdapter` in `src/remotask/task_sources/jira.py`.
-      Absorb the 002 `_ISSUE_KEY_RE` (`telegram/parser.py:15`) into
-      `JiraAdapter.matches`; absorb `split_prefix`
-      (`telegram/parser.py:29`) into
+      `format_issue_url`) and the `ContextPayload` `TypedDict` with four
+      fields: `{title: str, body: str, state: Literal["open", "closed"],
+      labels: list[str]}`. Add the `get_active_adapter(cfg, conn)`
+      factory — built once at daemon startup, lifetime-singleton, no
+      hot-reload. No adapter implementation yet — just the interface
+      and the typed shape.
+- [ ] T3 — Implement `JiraAdapter` in `src/remotask/task_sources/jira.py`
+      with constructor `JiraAdapter(host: str)` (single dependency — the
+      Jira host string). Absorb the 002 `_ISSUE_KEY_RE`
+      (`telegram/parser.py:15`) into `JiraAdapter.matches`; absorb
+      `split_prefix` (`telegram/parser.py:29`) into
       `JiraAdapter.extract_project_identifier`. Remove both from
       `telegram/parser.py`. `JiraAdapter.format_issue_url` reads
-      `cfg.jira.host`. Make AT1 / AT2 / AT3 green.
+      `self.host` and raises if empty. Make AT1 / AT2 / AT3 green.
 - [ ] T4 — Add `agent.task_source` config field to
-      `src/remotask/core/config.py` as a **required** enum (no default; the
-      pydantic validator rejects empty / missing). Add a nested `jira`
-      section with a single `host` field, conditionally required when
-      `agent.task_source == "jira"`. Wire **both** dispatcher call sites
-      to consult `get_active_adapter(cfg, conn)` (the same active instance):
+      `src/remotask/core/config.py` as a **required** enum (no default;
+      the pydantic validator rejects empty / missing). Add a nested
+      `jira` section with a single `host` field, conditionally required
+      when `agent.task_source == "jira"`. Add an
+      `adapter: TaskSourceAdapter` field to `DispatchContext`
+      (`daemon/dispatcher.py:46` dataclass), built at daemon startup via
+      `get_active_adapter(cfg, conn)` and injected by the runtime
+      alongside `conn` / `client` / `cfg` / `spawn_worker_task`. Wire
+      **both** dispatcher call sites to read `ctx.adapter`:
       - `dispatcher.dispatch` plain-text path
-        (`daemon/dispatcher.py:128` — current `extract_first_issue_key(text)`
-        call) — replace with `adapter.matches(text)`.
+        (`daemon/dispatcher.py:128` — current
+        `extract_first_issue_key(text)` call) — replace with
+        `ctx.adapter.matches(text)`.
       - `dispatcher._handle_slash_run` slash path
         (`daemon/dispatcher.py:617` — current
         `extract_first_issue_key(first_token) + split_prefix(...)` flow)
-        — replace with `adapter.matches(first_token) +
-        adapter.extract_project_identifier(...)`.
+        — replace with `ctx.adapter.matches(first_token) +
+        ctx.adapter.extract_project_identifier(...)`.
 - [ ] T5 — Amend `src/remotask/migrations/V0001__init.sql` in place
       (no V0002): rename `projects.jira_key` → `projects.source_identifier`,
       add `projects.source` TEXT, switch the PK to composite `(source,
@@ -432,7 +458,9 @@ All seven principles evaluated. No waiver required.
   with the PR link and `D24` reference.
 - The legacy `_ISSUE_KEY_RE` constant on `telegram/parser.py:15` is removed
   in T3; any test that imported it directly is migrated to call
-  `JiraAdapter().matches(text)`.
+  `JiraAdapter("<test-host>").matches(text)` (the constructor takes the
+  Jira host string; tests pass any non-empty placeholder when only
+  `matches` is exercised).
 - V0001 is amended *in place* (T5) instead of shipping a V0002 migration.
   This is sound because there is no other user — the project is in
   single-operator pre-release state. A formal V0002 with backfill logic
