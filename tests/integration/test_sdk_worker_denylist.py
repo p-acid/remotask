@@ -20,15 +20,30 @@ from remotask.agent.sdk_worker import (
 @pytest.mark.parametrize(
     "command",
     [
+        # Long-form flags
         "git push --force",
         "git push origin main --force",
         "git reset --hard HEAD~1",
-        "git clean -fd",
-        "git clean -xfd",
         "rm -rf /etc/passwd",
         "rm -rf /Users/somebody/important",
         "sudo whoami",
         "sudo apt install foo",
+        # Short-form / permuted flags (the regex bypasses CodeRabbit flagged)
+        "git push -f origin main",
+        "git push -fu origin main",  # combined short flags
+        "git clean -fd",
+        "git clean -xfd",
+        "git clean -d -f",  # split short flags
+        "git clean -d --force",
+        "rm -fr /etc",  # f before r in short bundle
+        "rm -r -f /etc",  # split short flags
+        "rm -r --force /etc",
+        "rm --recursive --force /etc",
+        # Chained / piped — must still be caught even when wrapped in benign prefix
+        "git status; git push --force",
+        "true && rm -rf /etc",
+        "false || sudo whoami",
+        "git push --force | tee /tmp/log",
     ],
 )
 def test_denied_commands_have_deny_reason(command: str) -> None:
@@ -42,20 +57,34 @@ def test_denied_commands_have_deny_reason(command: str) -> None:
         "git push --force-with-lease origin foo",  # safer variant allowed
         "git reset HEAD~1",  # soft/mixed reset allowed
         "git clean -n",  # dry-run only
+        "git clean --dry-run",
         "rm -rf /tmp/scratch",  # /tmp is exempt
+        "rm -rf /tmp",  # literal /tmp also exempt
         "rm -rf /var/folders/abc",  # macOS tmp dirs exempt
-        "sudoku --solve",  # tokenization: sudo + space required
-        "echo sudo whoami",  # quoted/echoed not blocked at this layer
+        "rm -f relative/path",  # no recursive flag
+        "rm -r relative/path",  # no force flag
+        "sudoku --solve",  # head != sudo (tokenized)
+        "echo sudo whoami",  # head=echo; token-based correctly allows
+        "git log | grep --force",  # second segment head=grep, not git
     ],
 )
 def test_allowed_commands_have_no_deny_reason(command: str) -> None:
-    # NOTE: the last case ("echo sudo whoami") *would* match the regex with
-    # ``\bsudo`` because of the word boundary inside the string. Adjust the
-    # expectation: this layer is intentionally conservative.
-    if command == "echo sudo whoami":
-        assert deny_reason_for(command) is not None  # documents conservatism
-    else:
-        assert deny_reason_for(command) is None, command
+    assert deny_reason_for(command) is None, command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'git commit -m "missing close quote',  # unbalanced quote
+        "git push 'unterminated",
+    ],
+)
+def test_unparseable_command_is_conservatively_rejected(command: str) -> None:
+    """Defensive: if the agent hands us a shell string we can't tokenise we
+    err on the side of blocking. This is the ``shlex.split`` ValueError
+    branch — keeps the deny-list from being trivially bypassed via quote
+    smuggling."""
+    assert deny_reason_for(command) is not None, command
 
 
 @pytest.mark.asyncio

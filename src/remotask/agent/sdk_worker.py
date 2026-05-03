@@ -31,6 +31,7 @@ import asyncio
 import json
 import os
 import re
+import shlex
 import signal
 import sys
 import time
@@ -52,16 +53,18 @@ _PR_URL_RE: re.Pattern[str] = re.compile(r"PR_URL=(\S+)")
 _STEP_THROTTLE_SECONDS: float = 1.0
 _INTERRUPT_DRAIN_TIMEOUT: float = 5.0
 
-# 헌법 §VI deny-list — these patterns are rejected at the PreToolUse hook
-# regardless of permission_mode. Operator-side overrides require a separate
-# spec/feature.
-_DENY_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"\bgit\s+push\s+.*--force(?!-with-lease)"),
-    re.compile(r"\bgit\s+reset\s+--hard\b"),
-    re.compile(r"\bgit\s+clean\s+-[a-zA-Z]*f"),
-    re.compile(r"\brm\s+-rf\s+/(?!tmp/|var/folders/)"),
-    re.compile(r"\bsudo(\s|$)"),
-]
+# 헌법 §VI deny-list — rejected at the PreToolUse hook regardless of
+# permission_mode. The earlier regex-only approach missed flag permutations
+# (``-f``, ``-fr``, ``-r -f``) and chained commands; the token-based check
+# below splits on shell separators (``;``, ``&&``, ``||``, ``|``), tokenises
+# each segment with ``shlex.split``, then inspects the head + flags
+# order-independently. Operator-side overrides require a separate spec.
+_SEGMENT_SPLIT_RE: re.Pattern[str] = re.compile(r"\s*(?:;|&&|\|\||\|)\s*")
+
+# Tmp paths that are exempt from the ``rm -rf <abs>`` block. Anything else
+# under ``/`` is rejected. Operator-side scratch dirs go through these.
+_RM_RF_SAFE_PATH_PREFIXES: tuple[str, ...] = ("/tmp/", "/var/folders/")
+_RM_RF_SAFE_PATH_LITERALS: tuple[str, ...] = ("/tmp",)
 
 
 # ---------------------------------------------------------------------------
@@ -93,11 +96,115 @@ class DriverState:
 
 
 def deny_reason_for(command: str) -> str | None:
-    """Return a deny reason if ``command`` matches any deny-list pattern; else None."""
-    for pat in _DENY_PATTERNS:
-        if pat.search(command):
-            return f"blocked by remotask deny-list: {pat.pattern}"
+    """Return a deny reason if ``command`` (or any chained sub-command) trips
+    the constitution §VI deny-list; else None.
+
+    Splits on ``;``, ``&&``, ``||``, ``|`` so chained payloads like
+    ``git status; git push --force`` or ``true && rm -rf /etc`` are caught.
+    Each segment is tokenised with :func:`shlex.split` and inspected
+    order-independently — flag permutations such as ``rm -fr``,
+    ``rm -r -f``, ``git push -f``, ``git clean -d -f`` all trip.
+    """
+    if not command or not command.strip():
+        return None
+    for raw_segment in _SEGMENT_SPLIT_RE.split(command):
+        segment = raw_segment.strip()
+        if not segment:
+            continue
+        reason = _segment_deny_reason(segment)
+        if reason is not None:
+            return reason
     return None
+
+
+def _segment_deny_reason(segment: str) -> str | None:
+    """Token-based check for one shell segment (no separators). Return
+    a human-readable deny reason or None.
+
+    Conservative on parse failure: an unbalanced quote means the agent
+    handed us something we cannot reason about and we err on the side of
+    blocking.
+    """
+    try:
+        tokens = shlex.split(segment)
+    except ValueError:
+        return "unparseable shell segment rejected by remotask deny-list"
+    if not tokens:
+        return None
+    head = tokens[0]
+    rest = tokens[1:]
+
+    if head == "sudo":
+        return "sudo invocation blocked by remotask deny-list"
+
+    if head == "git" and rest:
+        sub = rest[0]
+        sub_flags = [t for t in rest[1:] if t.startswith("-")]
+        if sub == "push":
+            for f in sub_flags:
+                # The safer variant stays explicitly allowed.
+                if f == "--force-with-lease" or f.startswith("--force-with-lease="):
+                    continue
+                if f == "--force" or f.startswith("--force="):
+                    return "git push --force blocked by remotask deny-list"
+                # Short combined flags like "-f" / "-fu" (force + set-upstream).
+                if _short_flag_contains(f, "f"):
+                    return "git push -f blocked by remotask deny-list"
+            return None
+        if sub == "reset":
+            if "--hard" in sub_flags:
+                return "git reset --hard blocked by remotask deny-list"
+            return None
+        if sub == "clean":
+            for f in sub_flags:
+                if f == "--force":
+                    return "git clean --force blocked by remotask deny-list"
+                if _short_flag_contains(f, "f"):
+                    return "git clean -f blocked by remotask deny-list"
+            return None
+        return None
+
+    if head == "rm":
+        flags = [t for t in rest if t.startswith("-")]
+        positional = [t for t in rest if not t.startswith("-")]
+        has_recursive = False
+        has_force = False
+        for f in flags:
+            if f.startswith("--"):
+                if f == "--recursive":
+                    has_recursive = True
+                elif f == "--force":
+                    has_force = True
+            else:
+                if _short_flag_contains(f, "r") or _short_flag_contains(f, "R"):
+                    has_recursive = True
+                if _short_flag_contains(f, "f"):
+                    has_force = True
+        if has_recursive and has_force:
+            for path in positional:
+                if not path.startswith("/"):
+                    continue
+                if path in _RM_RF_SAFE_PATH_LITERALS:
+                    continue
+                if any(path.startswith(p) for p in _RM_RF_SAFE_PATH_PREFIXES):
+                    continue
+                return "rm -rf on absolute path blocked by remotask deny-list"
+        return None
+
+    return None
+
+
+def _short_flag_contains(token: str, letter: str) -> bool:
+    """Return True if ``token`` is a short flag bundle (``-fr``, ``-rf``, …)
+    that contains ``letter``. ``--force``/``--recursive`` long forms return
+    False here (caller handles them explicitly). ``-`` and ``--`` alone
+    return False."""
+    if not token.startswith("-") or token.startswith("--"):
+        return False
+    body = token[1:]
+    if not body:
+        return False
+    return letter in body
 
 
 def step_body_for(tool_name: str, tool_input: dict[str, Any]) -> str:
