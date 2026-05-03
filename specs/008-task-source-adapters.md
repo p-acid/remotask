@@ -317,8 +317,13 @@ Default ordering for behavioural changes is test-first.
 - [ ] T6 — Implement `GitHubIssueAdapter` in
       `src/remotask/task_sources/github_issue.py` per the chosen authentication
       mode. Make AT4 / AT5 / AT7 green.
-- [ ] T7 — Implement the sanitisation layer (boundary or up-front, per the
-      chosen *Behavior* policy). Make AT6 green.
+- [ ] T7 — Verify the up-front sanitisation inside
+      `GitHubIssueAdapter.to_canonical` (per the *Behavior* policy already
+      locked in — single fs/git-safe canonical key, no boundary layer)
+      produces a `git check-ref-format`-valid form for every GH input
+      shape (`owner/repo#N`, `#N` shorthand). Add an explicit
+      `git check-ref-format` assertion fixture if not already covered by
+      T6's GitHubIssueAdapter tests. Make AT6 green.
 - [ ] T8 — Add the `EV_TASK_SOURCE_RESOLVED` constant to
       `daemon/audit.py` (alongside the existing `EV_*` family). Confirm
       `agent/sdk_worker.py:398-401` composes the bootstrap prompt from the
@@ -377,8 +382,9 @@ All seven principles evaluated. No waiver required.
   Jira specifically", `CONSTITUTION.md` L82–84) — no amendment needed.
 - **II. Daemon-Centric Architecture** — PASS. The adapter modules live under
   `src/remotask/task_sources/`. The daemon-side change is thin: the
-  dispatcher delegates `extract_first_issue_key` to the active adapter, and
-  the topic chokepoint switches URL formatter. Business logic still flows
+  dispatcher's two call sites delegate to `adapter.matches` and
+  `adapter.extract_project_identifier`, and the topic chokepoint switches
+  URL formatter to `adapter.format_issue_url`. Business logic still flows
   through the same daemon process; clients still command-and-display.
 - **III. Strict Session Isolation** — PASS. The §III invariant (`1 task =
   1 git worktree = 1 git branch`, `CONSTITUTION.md` L115) is preserved by
@@ -451,7 +457,7 @@ All seven principles evaluated. No waiver required.
   008 merges. Tracking only; not an 008 deliverable.
 - A second pipeline gap surfaced when the spec was re-read with an
   *implementer's* eye: the four-skill chain caught no implementation-
-  readiness issues (adapter-responsibility count drift from 3 to 4, factory
+  readiness issues (adapter-responsibility count drift from 3 to 5, factory
   signature ambiguity, dispatcher's two call sites flattened to one,
   missing audit-constant definition site, etc.). All of these were closed
   inline in this spec, but the gap itself is parked in the same
